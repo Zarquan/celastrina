@@ -1,0 +1,304 @@
+#
+# <meta:header>
+#   <meta:licence>
+#     Copyright (C) 2021 by Wizzard Solutions Ltd, ischnura@metagrid.co.uk
+#
+#     This information is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This information is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#   </meta:licence>
+# </meta:header>
+#
+#
+
+    Target:
+
+        Deploy the testnet validator in K8s on DigitalOcean.
+        Learn about creating K8s deployments.
+        Learn about K8s deployments on DigitalOcean.
+
+    Result:
+
+        Work in progress ..
+        Learning about K8s on DigitalOcean.
+
+# -----------------------------------------------------
+# Create a DigitalOcean K8s cluster.
+#[user@desktop]
+
+    2 vCPUs
+    4 GB Memory
+    100 GB Disk
+
+    Below spec for a validator but enough to experiment with for now ..
+    $20.00 monthly projected cost
+
+    NGINX Ingress Controller
+
+    Includes DigitalOcean Load Balancer
+    $10.00 monthly
+
+
+    Cluster ID
+    1c3350a4-edbe-4de9-b230-fb5d4ac49193
+
+    Cluster status
+    https://cloud.digitalocean.com/kubernetes/clusters/1c3350a4-edbe-4de9-b230-fb5d4ac49193
+
+    Kubernetes dashboard
+    https://cloud.digitalocean.com/kubernetes/clusters/1c3350a4-edbe-4de9-b230-fb5d4ac49193/db/43578d4f747e5baa65d87149bce4f61292523b63/#/overview?namespace=_all
+
+
+# -----------------------------------------------------
+# Download the client config.
+#[user@desktop]
+
+    >   apiVersion: v1
+    >   clusters:
+    >   - cluster:
+    >       certificate-authority-data: LS0t....LS0K
+    >       server: https://1c33....9193.k8s.ondigitalocean.com
+    >     name: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+    >   contexts:
+    >   - context:
+    >       cluster: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+    >       user: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186-admin
+    >     name: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+    >   current-context: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+    >   kind: Config
+    >   preferences: {}
+    >   users:
+    >   - name: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186-admin
+    >     user:
+    >       token: f41a....0dee
+
+
+# -----------------------------------------------------
+# Create a new API access token.
+#[user@desktop]
+
+
+    https://docs.digitalocean.com/reference/api/create-personal-access-token/
+
+    Applications & API - tokens
+    https://cloud.digitalocean.com/account/api/tokens
+
+    Installed it as a personal secret
+
+    secret 'digital.ocean.token'
+
+    >   92f7....22bd
+
+
+# -----------------------------------------------------
+# Run our DigitalOcean client (Docker container).
+# https://hub.docker.com/r/digitalocean/doctl
+#[user@desktop]
+
+    podman run \
+        --rm \
+        --tty \
+        --interactive \
+        --name oceanic \
+        --hostname oceanic \
+        --env "DIGITALOCEAN_ACCESS_TOKEN=$(secret 'digital.ocean.token')" \
+        --env "SSH_AUTH_SOCK=/mnt/ssh_auth_sock" \
+        --volume "${SSH_AUTH_SOCK}:/mnt/ssh_auth_sock:rw,z" \
+        digitalocean/doctl:latest \
+        account get
+
+    >   Email                         Droplet Limit    Email Verified    UUID       Status
+    >   digitalocean@metagrid.co.uk   25               true              23...73    active
+
+    #
+    # The Dockerfile sets the ENTRYPOINT, making it harder to run a shell inside the container.
+    # TODO Create our own client container.
+    # https://github.com/wfau/atolmis/issues/15
+    #
+
+# -----------------------------------------------------
+# Run the DigitalOcean Docker container, overriding ENTRYPOINT.
+# https://hub.docker.com/r/digitalocean/doctl
+#[user@desktop]
+
+    podman run \
+        --rm \
+        --tty \
+        --interactive \
+        --hostname oceanic \
+        --entrypoint '/bin/sh' \
+        --env "DIGITALOCEAN_ACCESS_TOKEN=$(secret 'digital.ocean.token')" \
+        --env "SSH_AUTH_SOCK=/mnt/ssh_auth_sock" \
+        --volume "${SSH_AUTH_SOCK}:/mnt/ssh_auth_sock:rw,z" \
+        digitalocean/doctl:latest
+
+    export PATH=${PATH}:/app
+
+    doctl account get
+
+    >   Email                         Droplet Limit    Email Verified    UUID       Status
+    >   digitalocean@metagrid.co.uk   25               true              23...73    active
+
+    #
+    # Not that much use, the Docker container doesn't include kubectl.
+    #
+
+    doctl kubernetes cluster kubeconfig show 1c3350a4-edbe-4de9-b230-fb5d4ac49193
+
+    >   apiVersion: v1
+    >   clusters:
+    >   - cluster:
+    >       certificate-authority-data: LS0t....LS0K
+    >       server: https://1c3350a4-edbe-4de9-b230-fb5d4ac49193.k8s.ondigitalocean.com
+    >     name: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+    >   contexts:
+    >   - context:
+    >       cluster: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+    >       user: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186-admin
+    >     name: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+    >   current-context: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+    >   kind: Config
+    >   preferences: {}
+    >   users:
+    >   - name: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186-admin
+    >     user:
+    >       token: 14....c2
+
+# -----------------------------------------------------
+# -----------------------------------------------------
+
+    #
+    # Build our own client container.
+    # https://github.com/wfau/atolmis/issues/15
+    #
+
+
+# -----------------------------------------------------
+# -----------------------------------------------------
+# Run our DigitalOcean client.
+#[user@desktop]
+
+    DIGITALOCEAN_CLUSTER_ID=1c3350a4-edbe-4de9-b230-fb5d4ac49193
+
+    podman run \
+        --rm \
+        --tty \
+        --interactive \
+        --hostname oceanic \
+        --env "DIGITALOCEAN_CLUSTER_ID=${DIGITALOCEAN_CLUSTER_ID:?}" \
+        --env "DIGITALOCEAN_ACCESS_TOKEN=$(secret 'digital.ocean.token')" \
+        --env "SSH_AUTH_SOCK=/mnt/ssh_auth_sock" \
+        --volume "${SSH_AUTH_SOCK}:/mnt/ssh_auth_sock:rw,z" \
+        atolmis/digitalocean-client:latest
+
+    doctl account get
+
+    >   Email                         Droplet Limit    Email Verified    UUID       Status
+    >   digitalocean@metagrid.co.uk   25               true              23...73    active
+
+
+    doctl kubernetes cluster kubeconfig show ${DIGITALOCEAN_CLUSTER_ID}
+
+    >   apiVersion: v1
+    >   clusters:
+    >   - cluster:
+    >       certificate-authority-data: LS0t....LS0K
+    >       server: https://1c3350a4-edbe-4de9-b230-fb5d4ac49193.k8s.ondigitalocean.com
+    >     name: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+    >   contexts:
+    >   - context:
+    >       cluster: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+    >       user: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186-admin
+    >     name: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+    >   current-context: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+    >   kind: Config
+    >   preferences: {}
+    >   users:
+    >   - name: do-ams3-k8s-1-21-2-do-2-ams3-1629806344186-admin
+    >     user:
+    >       token: d2....f7
+
+
+    doctl kubernetes cluster kubeconfig save ${DIGITALOCEAN_CLUSTER_ID}
+
+    >   Notice: Adding cluster credentials to kubeconfig file found in "/root/.kube/config"
+    >   Notice: Setting current-context to do-ams3-k8s-1-21-2-do-2-ams3-1629806344186
+
+
+
+    kubectl \
+        cluster-info
+
+    >   Kubernetes control plane is running at https://1c3350a4-edbe-4de9-b230-fb5d4ac49193.k8s.ondigitalocean.com
+    >   CoreDNS is running at https://1c3350a4-edbe-4de9-b230-fb5d4ac49193.k8s.ondigitalocean.com/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+
+
+    kubectl \
+        version
+
+    >   Client Version: version.Info{
+    >       Major:"1",
+    >       Minor:"20",
+    >       GitVersion:"v1.20.5",
+    >       GitCommit:"6b1d87acf3c8253c123756b9e61dac642678305f",
+    >       GitTreeState:"archive",
+    >       BuildDate:"2021-03-30T00:00:00Z",
+    >       GoVersion:"go1.16",
+    >       Compiler:"gc",
+    >       Platform:"linux/amd64"
+    >       }
+    >   Server Version: version.Info{
+    >       Major:"1",
+    >       Minor:"21",
+    >       GitVersion:"v1.21.2",
+    >       GitCommit:"092fbfbf53427de67cac1e9fa54aaa09a28371d7",
+    >       GitTreeState:"clean",
+    >       BuildDate:"2021-06-16T12:53:14Z",
+    >       GoVersion:"go1.16.5",
+    >       Compiler:"gc",
+    >       Platform:"linux/amd64"
+    >       }
+
+
+# -----------------------------------------------------
+# -----------------------------------------------------
+
+    The new version of bash in Fedor-34 has bracketed-paste mode enabled.
+    This means when you paste text into the shell, it leaves it highlighted and does not execute it.
+    You need to explicitly add a <return> yourself.
+    This was changed because of security (websites injecting extra code into clipboard).
+
+    To set this back to the original behaviour:
+
+        set enable-bracketed-paste Off
+
+    Quote:
+
+        I've found it annoying, but without knowing what it was.
+        Now I'm not sure whether to keep or disable it.
+        -- seth
+
+    https://bugzilla.redhat.com/show_bug.cgi?id=1954366
+    https://utcc.utoronto.ca/~cks/space/blog/unix/BashBracketedPasteChange?showcomments#comments
+    https://askubuntu.com/questions/662222/why-bracketed-paste-mode-is-enabled-sporadically-in-my-terminal-screen
+
+    Looks like this will be the new normal from now on.
+    Get used to it, or forever be editing .bashrc to switch it off.
+
+# -----------------------------------------------------
+# -----------------------------------------------------
+
+
+
+
+
+

@@ -1,0 +1,240 @@
+#
+# <meta:header>
+#   <meta:licence>
+#     Copyright (C) 2021 by Wizzard Solutions Ltd, ischnura@metagrid.co.uk
+#
+#     This information is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This information is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#   </meta:licence>
+# </meta:header>
+#
+#
+
+
+    Target:
+
+        Learn how to deploy a Besu ETH1 client in a K8s Pod.
+
+    Result:
+
+        Work in progres ..
+
+
+
+    DigitalOcean Pod lifecycle components require a Pods that reference
+    Block Storage Volumes are owned by a StatefulSet.
+    https://docs.digitalocean.com/products/kubernetes/resources/clusterlint-errors/#dobs-pod-owner
+
+    >   # Recommended: Ensure that a StatefulSet is used to configure pods referencing DOBS volumes
+    >   apiVersion: apps/v1
+    >   kind: StatefulSet
+    >   metadata:
+    >     name: web
+    >     namespace: test
+    >   spec:
+    >     selector:
+    >       matchLabels:
+    >         app: mypod
+    >     serviceName: "nginx"
+    >     replicas: 1
+    >     template:
+    >       metadata:
+    >         labels:
+    >           app: mypod
+    >       spec:
+    >         containers:
+    >         - name: nginx
+    >           image: nginx:1.17.0
+    >           volumeMounts:
+    >           - name: all-data
+    >             mountPath: "/data"
+    >     volumeClaimTemplates:
+    >     - metadata:
+    >         name: all-data
+    >       spec:
+    >         accessModes: [ "ReadWriteOnce" ]
+    >         resources:
+    >           requests:
+    >             storage: 1Gi
+    >         storageClassName: do-block-storage
+
+
+# -----------------------------------------------------
+
+    Besu and Teku deployed uisng docker-compose
+    https://docs.teku.pegasys.tech/en/latest/HowTo/Get-Started/Installation-Options/Run-Docker-Image/#run-teku-using-docker-compose
+
+    >   ---
+    >   version: '3.4'
+    >   services:
+    >
+    >     besu_node:
+    >       image: hyperledger/besu:latest
+    >       command: ["--network=goerli",
+    >                 "--data-path=/opt/besu/data/data",
+    >                 "--host-allowlist=*",
+    >                 "--sync-mode=FAST",
+    >                 "--rpc-http-enabled",
+    >                 "--rpc-http-cors-origins=*",
+    >                 "--rpc-http-api=ETH,NET,CLIQUE,DEBUG,MINER,NET,PERM,ADMIN,EEA,TXPOOL,PRIV,WEB3"]
+    >       volumes:
+    >         - ./besu:/opt/besu/data
+    >       ports:
+    >         # Map the p2p port(30303) and RPC HTTP port(8545)
+    >         - "8545:8545"
+    >         - "30303:30303"
+    >
+    >     teku_node:
+    >       environment:
+    >         - "JAVA_OPTS=-Xmx4g"
+    >       image: consensys/teku:latest
+    >       command: ["--network=pyrmont",
+    >                 "--data-base-path=/opt/teku/data"
+    >                 "--eth1-endpoint=http://besu_node:8545",
+    >                 "--validator-keys=/opt/teku/data/validator/keys:/opt/teku/data/validator/passwords",
+    >                 "--p2p-port=9000",
+    >                 "--rest-api-enabled=true",
+    >                 "--rest-api-docs-enabled=true"]
+    >       depends_on:
+    >         - besu_node
+    >       volumes:
+    >         - ./teku:/opt/teku/data
+    >       ports:
+    >         # Map the p2p port(9000) and REST API port(5051)
+    >         - "9000:9000"
+    >         - "5051:5051"
+
+
+# -----------------------------------------------------
+
+    Besu - configuring NAT
+    https://besu.hyperledger.org/en/stable/HowTo/Find-and-Connect/Specifying-NAT/
+
+        Use the --nat-method option to specify the NAT method.
+        Options are: UPNP, KUBERNETES, DOCKER, AUTO, and NONE.
+
+
+# -----------------------------------------------------
+
+    Exposing non-http ports using Nginx Ingress
+    https://github.com/kubernetes/ingress-nginx/blob/main/docs/user-guide/exposing-tcp-udp-services.md
+
+
+# -----------------------------------------------------
+
+    Besu System requirements
+    https://besu.hyperledger.org/en/stable/HowTo/Get-Started/System-Requirements/System-Requirements-Public/
+
+        For Mainnet and testnets, the minimum Java Virtual Machine (JVM) memory requirement is 8 GB.
+
+        Fast synchronization with pruning enabled requires approximately 750 GB of disk space.
+        Full synchronization requires approximately 3 TB.
+
+
+    StatefulSet links PVC claims with specific Pods, so the same Pods get the same claims if they get moved or re-created.
+    https://cloud.google.com/kubernetes-engine/docs/concepts/statefulset
+
+    StatefulSet PersistentVolumes and headless Service provide a stable name for each member of the set to link the volume to.
+    https://stackoverflow.com/questions/41732819/why-statefulsets-cant-a-stateless-pod-use-persistent-volumes/41733207#41733207
+
+    StatefulSet needs a headless Service to provide DNS names for the individual instances.
+    https://stackoverflow.com/questions/52707840/what-is-a-headless-service-what-does-it-do-accomplish-and-what-are-some-legiti
+
+    >   apiVersion: v1
+    >   kind: Service
+    >   metadata:
+    >     name: besu-svc
+    >     labels:
+    >       app: besu-app
+    >   spec:
+    >     ports:
+    >     - port: 8545
+    >       name: besu-rpc
+    >     - port: 30303
+    >       name: besu-p2p
+    >
+    >     clusterIP: None
+    >     selector:
+    >       app: besu-app
+
+
+    >   apiVersion: apps/v1
+    >   kind: StatefulSet
+    >   metadata:
+    >     name: besu-set
+    >     namespace: ethereum-ns
+    >   spec:
+    >
+    >     selector:
+    >       matchLabels:
+    >         app: besu-app
+    >
+    >     serviceName: besu-svc
+    >     replicas: 1
+    >
+    >     template:
+    >
+    >       metadata:
+    >         labels:
+    >           app: besu-app
+    >
+    >       spec:
+    >
+    >         # https://docs.digitalocean.com/products/kubernetes/resources/clusterlint-errors/#run-as-non-root
+    >         securityContext:
+    >           runAsNonRoot: true
+    >
+    >         containers:
+    >
+    >         - name: besu
+    >
+    >           # https://docs.digitalocean.com/products/kubernetes/resources/clusterlint-errors/#latest-tag
+    >           # https://docs.digitalocean.com/products/kubernetes/resources/clusterlint-errors/#fully-qualified-image
+    >           image: docker.io/hyperledger/besu:21.7
+    >
+    >           args:
+    >           - "--network=goerli"
+    >           - "--data-path=/opt/besu/data/data"
+    >           - "--host-allowlist=*"
+    >           - "--sync-mode=FAST"
+    >           - "--nat-method=KUBERNETES"
+    >           - "--rpc-http-enabled"
+    >           - "--rpc-http-cors-origins=*"
+    >           - "--rpc-http-api=ETH,NET,CLIQUE,DEBUG,MINER,NET,PERM,ADMIN,EEA,TXPOOL,PRIV,WEB3"
+    >
+    >          ports:
+    >           - containerPort: 8545
+    >             name: besu-rpc
+    >           - containerPort: 30303
+    >             name: besu-p2p
+    >
+    >           volumeMounts:
+    >           - name: besu-pvc
+    >             mountPath: "/opt/besu/data"
+    >
+    >     volumeClaimTemplates:
+    >     - metadata:
+    >         name: besu-pvc
+    >       spec:
+    >         accessModes: [ "ReadWriteOnce" ]
+    >         resources:
+    >           requests:
+    >             storage: 750Gi
+    >         storageClassName: do-block-storage
+
+
+
+
+
+
+

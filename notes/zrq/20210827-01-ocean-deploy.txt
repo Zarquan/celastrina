@@ -1,0 +1,436 @@
+#
+# <meta:header>
+#   <meta:licence>
+#     Copyright (C) 2021 by Wizzard Solutions Ltd, ischnura@metagrid.co.uk
+#
+#     This information is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This information is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#   </meta:licence>
+# </meta:header>
+#
+#
+
+    Target:
+
+        Experiment with the DigitalOcean client and learn the commands.
+
+    Result:
+
+        Work in progress ..
+        Learning about K8s on DigitalOcean.
+        Messing around with name changes to learn the commands and data model.
+
+    #
+    # doctl commands
+    # https://docs.digitalocean.com/reference/doctl/reference/
+    #
+
+# -----------------------------------------------------
+# Create a client container to work in.
+#[user@desktop]
+
+    podman run \
+        --rm \
+        --tty \
+        --interactive \
+        --hostname oceanic \
+        --env "DIGITALOCEAN_ACCESS_TOKEN=$(secret 'digital.ocean.token')" \
+        --env "SSH_AUTH_SOCK=/mnt/ssh_auth_sock" \
+        --volume "${SSH_AUTH_SOCK}:/mnt/ssh_auth_sock:rw,z" \
+        atolmis/digitalocean-client:2021.08.25
+
+
+# -----------------------------------------------------
+# List our droplets.
+#[root@oceanic]
+
+    doctl compute droplet list
+
+    >   ID           Name                                           Public IPv4       Private IPv4    Public IPv6                 Memory    VCPUs    Disk    Region    Image                         VPC UUID                                Status    Tags                                                       Features                   Volumes
+    >   231004055    Hizzoria                                       46.101.32.198     10.106.0.2      2a03:b0c0:1:d0::b53:6001    1024      1        25      lon1      Fedora 33 x64                 c873dfe8-9619-4801-9c18-f3fdc290b0fd    active                                                               private_networking,ipv6
+    >   261956752    etherium-testnet-cluster-default-pool-8durg    134.122.59.194    10.110.0.3                                  2048      1        50      ams3      Debian do-kube-1.21.2-do.2    6e933088-8eb3-4caf-8764-02cbfe92369c    active    k8s,k8s:460dead9-dbf8-42d7-b499-70bd0ed396d8,k8s:worker    private_networking
+    >   261956753    etherium-testnet-cluster-default-pool-8dure    134.122.63.222    10.110.0.4                                  2048      1        50      ams3      Debian do-kube-1.21.2-do.2    6e933088-8eb3-4caf-8764-02cbfe92369c    active    k8s,k8s:460dead9-dbf8-42d7-b499-70bd0ed396d8,k8s:worker    private_networking
+
+
+# -----------------------------------------------------
+# List our projects.
+#[root@oceanic]
+
+    doctl projects list
+
+    >   ID                                      Owner UUID                                  Owner ID    Name                        Description                                       Purpose                              Environment    Is Default?    Created At              Updated At
+    >   18d47e80-aa19-4af3-98a2-248a62948010    43578d4f747e5baa65d87149bce4f61292523b63    836540      cloud.digitalocean.com      Update your project information under Settings                                                        true           2018-04-17T16:12:33Z    2018-07-25T18:20:44Z
+    >   858cf5c5-9a61-40a0-a78a-f04a2c305732    43578d4f747e5baa65d87149bce4f61292523b63    836540      ethereum-testnet-project    Ethereum testnet validator                        Other: Ethereum testnet validator                   false          2021-08-26T16:53:31Z    2021-08-26T17:19:03Z
+
+
+# -----------------------------------------------------
+# List our Ethereum project.
+#[root@oceanic]
+
+    projectid=$(
+        doctl \
+            --output json \
+            projects list \
+        | jq -r '.[] | select( .name | test("^ethereum.*")) | .id'
+        )
+
+echo "Project [${projectid}]"
+
+    >   Project [858cf5c5-9a61-40a0-a78a-f04a2c305732]
+
+
+    doctl \
+        --output json \
+        projects update \
+            --name 'ethereum-testnet-project' \
+            "${projectid:?}" \
+    | jq '.'
+
+    >   [
+    >     {
+    >       "id": "858cf5c5-9a61-40a0-a78a-f04a2c305732",
+    >       "owner_uuid": "43578d4f747e5baa65d87149bce4f61292523b63",
+    >       "owner_id": 836540,
+    >       "name": "ethereum-testnet-project",
+    >       "description": "Ethereum testnet validator",
+    >       "purpose": "Other: Ethereum testnet validator",
+    >       "environment": "",
+    >       "is_default": false,
+    >       "created_at": "2021-08-26T16:53:31Z",
+    >       "updated_at": "2021-08-26T17:19:03Z"
+    >     }
+    >   ]
+
+
+# -----------------------------------------------------
+# List our K8s clusters.
+#[root@oceanic]
+
+    doctl \
+        kubernetes \
+            cluster \
+                list
+
+    >   ID                                      Name                        Region    Version        Auto Upgrade    Status     Node Pools
+    >   460dead9-dbf8-42d7-b499-70bd0ed396d8    etherium-testnet-cluster    ams3      1.21.2-do.2    false           running    etherium-testnet-cluster-default-pool
+
+
+# -----------------------------------------------------
+# List our Ethereum cluster (bad spelling).
+#[root@oceanic]
+
+    clusterid=$(
+        doctl \
+            --output json \
+            kubernetes \
+                cluster \
+                    list \
+        | jq -r '.[] | select( .name | test("^etherium.*")) | .id'
+        )
+
+echo "Cluster ${clusterid}"
+
+    >   Cluster 460dead9-dbf8-42d7-b499-70bd0ed396d8
+
+
+# -----------------------------------------------------
+# Fix the name on our Ethereum cluster.
+#[root@oceanic]
+
+    doctl \
+        kubernetes \
+            cluster \
+                update \
+                    --cluster-name 'ethereum-testnet-cluster' \
+                    "${clusterid:?}"
+
+    >   Notice: Cluster updated, fetching new credentials
+    >   Notice: Adding cluster credentials to kubeconfig file found in "/root/.kube/config"
+    >   Notice: Setting current-context to do-ams3-ethereum-testnet-cluster
+
+    >   ID                                      Name                        Region    Version        Auto Upgrade    Status     Node Pools
+    >   460dead9-dbf8-42d7-b499-70bd0ed396d8    ethereum-testnet-cluster    ams3      1.21.2-do.2    false           running    etherium-testnet-cluster-default-pool
+
+
+# -----------------------------------------------------
+# Fix the name on our node pool.
+#[root@oceanic]
+
+    doctl \
+        kubernetes \
+            cluster \
+                node-pool \
+                    update \
+                        "${clusterid:?}" \
+                            'etherium-testnet-cluster-default-pool' \
+                                --name 'ethereum-testnet-cluster-default-pool'
+
+    >   ID                                      Name                                     Size           Count    Tags                                                       Labels    Taints    Nodes
+    >   28dc9ffe-cda9-4806-8dad-a822ef2015af    ethereum-testnet-cluster-default-pool    s-1vcpu-2gb    2        k8s,k8s:460dead9-dbf8-42d7-b499-70bd0ed396d8,k8s:worker    map[]     []        [etherium-testnet-cluster-default-pool-8durg etherium-testnet-cluster-default-pool-8dure]
+
+
+# -----------------------------------------------------
+# Fix our node names.
+#[root@oceanic]
+
+    doctl \
+        kubernetes \
+            cluster \
+                node-pool get \
+                    "${clusterid:?}" \
+                        'ethereum-testnet-cluster-default-pool'
+
+    >   ID                                      Name                                     Size           Count    Tags                                                       Labels    Taints    Nodes
+    >   28dc9ffe-cda9-4806-8dad-a822ef2015af    ethereum-testnet-cluster-default-pool    s-1vcpu-2gb    2        k8s,k8s:460dead9-dbf8-42d7-b499-70bd0ed396d8,k8s:worker    map[]     []        [etherium-testnet-cluster-default-pool-8durg etherium-testnet-cluster-default-pool-8dure]
+
+
+    tmpfile=$(mktemp)
+
+    doctl \
+        --output json \
+        kubernetes \
+            cluster \
+                node-pool get \
+                    "${clusterid:?}" \
+                        'ethereum-testnet-cluster-default-pool' \
+    | jq -r '.[0] | .nodes | .[] | {id, name}' \
+    | tee "${tmpfile:?}"
+
+    >   {
+    >     "id": "39f297c9-1bad-4eb8-a390-fa3b1ccd51c3",
+    >     "name": "etherium-testnet-cluster-default-pool-8durg"
+    >   }
+    >   {
+    >     "id": "5c328004-c543-48b0-97fa-2ae93407af64",
+    >     "name": "etherium-testnet-cluster-default-pool-8dure"
+    >   }
+
+
+    for dropletname in $(jq -r '.name' "${tmpfile:?}")
+    do
+        echo ""
+        echo "Droplet name [${dropletname:?}]"
+
+        dropletid=$(
+            doctl \
+                --output json \
+                compute \
+                    droplet get \
+                        "${dropletname:?}" \
+            | jq -r '.[0].id'
+            )
+
+        echo "Droplet id   [${dropletid:?}]"
+
+        newname=${dropletname//etherium/ethereum}
+        echo "Update name  [${newname}]"
+
+        doctl \
+            compute \
+                droplet-action \
+                    rename \
+                        "${dropletid:?}" \
+                        --droplet-name "${newname:?}"
+    done
+
+    >   Droplet name [etherium-testnet-cluster-default-pool-8durg]
+    >   Droplet id   [261956752]
+    >   Update name  [ethereum-testnet-cluster-default-pool-8durg]
+    >   ID            Status         Type      Started At                       Completed At    Resource ID    Resource Type    Region
+    >   1289192168    in-progress    rename    2021-08-27 11:42:16 +0000 UTC    <nil>           261956752      droplet          ams3
+    >   
+    >   Droplet name [etherium-testnet-cluster-default-pool-8dure]
+    >   Droplet id   [261956753]
+    >   Update name  [ethereum-testnet-cluster-default-pool-8dure]
+    >   ID            Status         Type      Started At                       Completed At    Resource ID    Resource Type    Region
+    >   1289192186    in-progress    rename    2021-08-27 11:42:17 +0000 UTC    <nil>           261956753      droplet          ams3
+
+
+# -----------------------------------------------------
+# List our cluster, pool and nodes.
+#[root@oceanic]
+
+    doctl \
+        kubernetes \
+            cluster \
+                list
+
+    >   ID                                      Name                        Region    Version        Auto Upgrade    Status     Node Pools
+    >   460dead9-dbf8-42d7-b499-70bd0ed396d8    ethereum-testnet-cluster    ams3      1.21.2-do.2    false           running    ethereum-testnet-cluster-default-pool
+
+
+    clusterid=$(
+        doctl \
+            --output json \
+            kubernetes \
+                cluster \
+                    list \
+        | jq -r '.[] | first(select( .name | test("^ethereum.*"))) | .id'
+        )
+
+    echo "Cluster ID [${clusterid}]"
+
+    >   Cluster ID [460dead9-dbf8-42d7-b499-70bd0ed396d8]
+
+
+    doctl \
+        kubernetes \
+            cluster \
+                node-pool \
+                    list \
+                        "${clusterid:?}"
+
+    >   ID                                      Name                                     Size           Count    Tags                                                       Labels    Taints    Nodes
+    >   28dc9ffe-cda9-4806-8dad-a822ef2015af    ethereum-testnet-cluster-default-pool    s-1vcpu-2gb    2        k8s,k8s:460dead9-dbf8-42d7-b499-70bd0ed396d8,k8s:worker    map[]     []        [etherium-testnet-cluster-default-pool-8durg etherium-testnet-cluster-default-pool-8dure]
+
+
+    doctl \
+        --output json \
+        kubernetes \
+            cluster \
+                node-pool \
+                    list \
+                        "${clusterid:?}" \
+    | jq '.'
+
+    >   [
+    >     {
+    >       "id": "28dc9ffe-cda9-4806-8dad-a822ef2015af",
+    >       "name": "ethereum-testnet-cluster-default-pool",
+    >       "size": "s-1vcpu-2gb",
+    >       "count": 2,
+    >       "tags": [
+    >         "k8s",
+    >         "k8s:460dead9-dbf8-42d7-b499-70bd0ed396d8",
+    >         "k8s:worker"
+    >       ],
+    >       "nodes": [
+    >         {
+    >           "id": "39f297c9-1bad-4eb8-a390-fa3b1ccd51c3",
+    >           "name": "etherium-testnet-cluster-default-pool-8durg",
+    >           "status": {
+    >             "state": "running"
+    >           },
+    >           "droplet_id": "261956752",
+    >           "created_at": "2021-08-26T17:47:36Z",
+    >           "updated_at": "2021-08-26T17:51:31Z"
+    >         },
+    >         {
+    >           "id": "5c328004-c543-48b0-97fa-2ae93407af64",
+    >           "name": "etherium-testnet-cluster-default-pool-8dure",
+    >           "status": {
+    >             "state": "running"
+    >           },
+    >           "droplet_id": "261956753",
+    >           "created_at": "2021-08-26T17:47:36Z",
+    >           "updated_at": "2021-08-26T17:51:31Z"
+    >         }
+    >       ]
+    >     }
+    >   ]
+
+    nodepoolid=$(
+        doctl \
+            --output json \
+            kubernetes \
+                cluster \
+                    node-pool \
+                        list \
+                            "${clusterid:?}" \
+        | jq -r '.[0].id'
+        )
+
+    echo "Nodepool ID [${nodepoolid}]"
+
+    >   Nodepool ID [28dc9ffe-cda9-4806-8dad-a822ef2015af]
+
+
+    doctl \
+        --output json \
+        kubernetes \
+            cluster \
+                node-pool \
+                    get \
+                        "${clusterid:?}" \
+                        "${nodepoolid:?}" \
+    | jq '.[0]'
+
+    >   {
+    >     "id": "28dc9ffe-cda9-4806-8dad-a822ef2015af",
+    >     "name": "ethereum-testnet-cluster-default-pool",
+    >     "size": "s-1vcpu-2gb",
+    >     "count": 2,
+    >     "tags": [
+    >       "k8s",
+    >       "k8s:460dead9-dbf8-42d7-b499-70bd0ed396d8",
+    >       "k8s:worker"
+    >     ],
+    >     "nodes": [
+    >       {
+    >         "id": "39f297c9-1bad-4eb8-a390-fa3b1ccd51c3",
+    >         "name": "etherium-testnet-cluster-default-pool-8durg",
+    >         "status": {
+    >           "state": "running"
+    >         },
+    >         "droplet_id": "261956752",
+    >         "created_at": "2021-08-26T17:47:36Z",
+    >         "updated_at": "2021-08-26T17:51:31Z"
+    >       },
+    >       {
+    >         "id": "5c328004-c543-48b0-97fa-2ae93407af64",
+    >         "name": "etherium-testnet-cluster-default-pool-8dure",
+    >         "status": {
+    >           "state": "running"
+    >         },
+    >         "droplet_id": "261956753",
+    >         "created_at": "2021-08-26T17:47:36Z",
+    >         "updated_at": "2021-08-26T17:51:31Z"
+    >       }
+    >     ]
+    >   }
+
+
+    doctl \
+        --output json \
+        kubernetes \
+            cluster \
+                node-pool \
+                    get \
+                        "${clusterid:?}" \
+                        "${nodepoolid:?}" \
+    | jq '.[0].nodes'
+
+    >   [
+    >     {
+    >       "id": "39f297c9-1bad-4eb8-a390-fa3b1ccd51c3",
+    >       "name": "etherium-testnet-cluster-default-pool-8durg",
+    >       "status": {
+    >         "state": "running"
+    >       },
+    >       "droplet_id": "261956752",
+    >       "created_at": "2021-08-26T17:47:36Z",
+    >       "updated_at": "2021-08-26T17:51:31Z"
+    >     },
+    >     {
+    >       "id": "5c328004-c543-48b0-97fa-2ae93407af64",
+    >       "name": "etherium-testnet-cluster-default-pool-8dure",
+    >       "status": {
+    >         "state": "running"
+    >       },
+    >       "droplet_id": "261956753",
+    >       "created_at": "2021-08-26T17:47:36Z",
+    >       "updated_at": "2021-08-26T17:51:31Z"
+    >     }
+    >   ]
+
+

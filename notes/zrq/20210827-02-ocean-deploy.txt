@@ -1,0 +1,337 @@
+#
+# <meta:header>
+#   <meta:licence>
+#     Copyright (C) 2021 by Wizzard Solutions Ltd, ischnura@metagrid.co.uk
+#
+#     This information is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This information is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#   </meta:licence>
+# </meta:header>
+#
+#
+
+    Target:
+
+        Experiment with the DigitalOcean client and learn the commands.
+
+    Result:
+
+        Work in progress ..
+        Learning about K8s on DigitalOcean.
+        Added a NGINX Ingress and LoadBalancer.
+
+# -----------------------------------------------------
+# Create a client container to work in.
+#[user@desktop]
+
+    podman run \
+        --rm \
+        --tty \
+        --interactive \
+        --hostname oceanic \
+        --env "DIGITALOCEAN_ACCESS_TOKEN=$(secret 'digital.ocean.token')" \
+        --env "SSH_AUTH_SOCK=/mnt/ssh_auth_sock" \
+        --volume "${SSH_AUTH_SOCK}:/mnt/ssh_auth_sock:rw,z" \
+        atolmis/digitalocean-client:2021.08.25
+
+
+# -----------------------------------------------------
+# List our droplets.
+#[root@oceanic]
+
+    doctl compute droplet list
+
+    >   ID           Name                                           Public IPv4       Private IPv4    Public IPv6                 Memory    VCPUs    Disk    Region    Image                         VPC UUID                                Status    Tags                                                       Features                   Volumes
+    >   231004055    Hizzoria                                       46.101.32.198     10.106.0.2      2a03:b0c0:1:d0::b53:6001    1024      1        25      lon1      Fedora 33 x64                 c873dfe8-9619-4801-9c18-f3fdc290b0fd    active                                                               private_networking,ipv6
+    >   261956752    ethereum-testnet-cluster-default-pool-8durg    134.122.59.194    10.110.0.3                                  2048      1        50      ams3      Debian do-kube-1.21.2-do.2    6e933088-8eb3-4caf-8764-02cbfe92369c    active    k8s,k8s:460dead9-dbf8-42d7-b499-70bd0ed396d8,k8s:worker    private_networking
+    >   261956753    ethereum-testnet-cluster-default-pool-8dure    134.122.63.222    10.110.0.4                                  2048      1        50      ams3      Debian do-kube-1.21.2-do.2    6e933088-8eb3-4caf-8764-02cbfe92369c    active    k8s,k8s:460dead9-dbf8-42d7-b499-70bd0ed396d8,k8s:worker    private_networking
+
+
+# -----------------------------------------------------
+# List our K8s clusters.
+#[root@oceanic]
+
+    doctl \
+        kubernetes \
+            cluster \
+                list
+
+    >   ID                                      Name                        Region    Version        Auto Upgrade    Status     Node Pools
+    >   460dead9-dbf8-42d7-b499-70bd0ed396d8    ethereum-testnet-cluster    ams3      1.21.2-do.2    false           running    ethereum-testnet-cluster-default-pool
+
+
+# -----------------------------------------------------
+# Get our K8s cluster details.
+#[root@oceanic]
+
+    clusterid=$(
+        doctl \
+            --output json \
+            kubernetes \
+                cluster \
+                    list \
+        | jq -r '.[] | first(select( .name | test("^ethereum.*"))) | .id'
+        )
+
+    doctl \
+        kubernetes \
+            cluster \
+                get \
+                    "${clusterid:?}"
+
+    >   ID                                      Name                        Region    Version        Auto Upgrade    Status     Endpoint                                                               IPv4             Cluster Subnet    Service Subnet    Tags                                            Created At                       Updated At                       Node Pools
+    >   460dead9-dbf8-42d7-b499-70bd0ed396d8    ethereum-testnet-cluster    ams3      1.21.2-do.2    false           running    https://460dead9-dbf8-42d7-b499-70bd0ed396d8.k8s.ondigitalocean.com    134.209.94.43    10.244.0.0/16     10.245.0.0/16     k8s,k8s:460dead9-dbf8-42d7-b499-70bd0ed396d8    2021-08-26 17:47:36 +0000 UTC    2021-08-27 11:05:05 +0000 UTC    ethereum-testnet-cluster-default-pool
+
+
+    doctl \
+        kubernetes \
+            cluster \
+                kubeconfig \
+                    show \
+                        "${clusterid:?}"
+
+    >   apiVersion: v1
+    >   clusters:
+    >   - cluster:
+    >       certificate-authority-data: LS0t........LS0K
+    >       server: https://460dead9-dbf8-42d7-b499-70bd0ed396d8.k8s.ondigitalocean.com
+    >     name: do-ams3-ethereum-testnet-cluster
+    >   contexts:
+    >   - context:
+    >       cluster: do-ams3-ethereum-testnet-cluster
+    >       user: do-ams3-ethereum-testnet-cluster-admin
+    >     name: do-ams3-ethereum-testnet-cluster
+    >   current-context: do-ams3-ethereum-testnet-cluster
+    >   kind: Config
+    >   preferences: {}
+    >   users:
+    >   - name: do-ams3-ethereum-testnet-cluster-admin
+    >     user:
+    >       token: 92....73
+
+
+    doctl \
+        kubernetes \
+            cluster \
+                kubeconfig \
+                    save \
+                        "${clusterid:?}"
+
+    >   Notice: Adding cluster credentials to kubeconfig file found in "/root/.kube/config"
+    >   Notice: Setting current-context to do-ams3-ethereum-testnet-cluster
+
+
+# -----------------------------------------------------
+# Get our K8s cluster details.
+#[root@oceanic]
+
+    kubectl \
+        cluster-info
+
+    >   Kubernetes control plane is running at https://460dead9-dbf8-42d7-b499-70bd0ed396d8.k8s.ondigitalocean.com
+    >   CoreDNS is running at https://460dead9-dbf8-42d7-b499-70bd0ed396d8.k8s.ondigitalocean.com/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+
+
+    kubectl \
+        --output json \
+        version
+
+    >   {
+    >     "clientVersion": {
+    >       "major": "1",
+    >       "minor": "20",
+    >       "gitVersion": "v1.20.5",
+    >       "gitCommit": "6b1d87acf3c8253c123756b9e61dac642678305f",
+    >       "gitTreeState": "archive",
+    >       "buildDate": "2021-03-30T00:00:00Z",
+    >       "goVersion": "go1.16",
+    >       "compiler": "gc",
+    >       "platform": "linux/amd64"
+    >     },
+    >     "serverVersion": {
+    >       "major": "1",
+    >       "minor": "21",
+    >       "gitVersion": "v1.21.2",
+    >       "gitCommit": "092fbfbf53427de67cac1e9fa54aaa09a28371d7",
+    >       "gitTreeState": "clean",
+    >       "buildDate": "2021-06-16T12:53:14Z",
+    >       "goVersion": "go1.16.5",
+    >       "compiler": "gc",
+    >       "platform": "linux/amd64"
+    >     }
+    >   }
+
+
+    kubectl \
+        get Namespaces
+
+    >   ....
+    >   ....
+
+
+    kubectl \
+        get Pods
+
+    >   NAME              STATUS   AGE
+    >   default           Active   18h
+    >   kube-node-lease   Active   18h
+    >   kube-public       Active   18h
+    >   kube-system       Active   18h
+
+
+    kubectl \
+        --namespace 'kube-system' \
+        get Pods
+
+    >   NAME                               READY   STATUS    RESTARTS   AGE
+    >   cilium-bqg59                       1/1     Running   0          18h
+    >   cilium-operator-57d77c686b-rnm5l   1/1     Running   1          18h
+    >   cilium-operator-57d77c686b-xhd4l   1/1     Running   0          18h
+    >   cilium-pdzfq                       1/1     Running   0          18h
+    >   coredns-85d9ccbb46-26vjl           1/1     Running   0          18h
+    >   coredns-85d9ccbb46-lwlg5           1/1     Running   0          18h
+    >   csi-do-node-jrbh4                  2/2     Running   0          18h
+    >   csi-do-node-n4cv4                  2/2     Running   0          18h
+    >   do-node-agent-6kggc                1/1     Running   0          18h
+    >   do-node-agent-n4fwg                1/1     Running   0          18h
+    >   kube-proxy-2krrz                   1/1     Running   0          18h
+    >   kube-proxy-pdgt4                   1/1     Running   0          18h
+
+
+# -----------------------------------------------------
+# Cluster patch updates.
+#[root@oceanic]
+
+    Automatically install minor version patches
+    + time
+
+
+# -----------------------------------------------------
+# Add the Kubernetes monitoring and logging stacks.
+#[root@oceanic]
+
+    #
+    # https://marketplace.digitalocean.com/apps/kubernetes-monitoring-stack
+    # https://marketplace.digitalocean.com/apps/grafana-loki
+    #
+
+# -----------------------------------------------------
+# Add a NGINX Ingress, LoadBalancer and public IP address.
+# https://marketplace.digitalocean.com/apps/nginx-ingress-controller
+#[root@oceanic]
+
+    doctl \
+        kubernetes \
+            1-click list
+
+    >   SLUG                     TYPE
+    >   moon                     kubernetes
+    >   fyipe                    kubernetes
+    >   robomotion               kubernetes
+    >   openfaas                 kubernetes
+    >   kubemq                   kubernetes
+    >   redskyops                kubernetes
+    >   argocd                   kubernetes
+    >   mattermost-operator      kubernetes
+    >   storageos                kubernetes
+    >   vitess                   kubernetes
+    >   okteto                   kubernetes
+    >   kube-state-metrics       kubernetes
+    >   gluu                     kubernetes
+    >   ambassador               kubernetes
+    >   kubeyTest                kubernetes
+    >   cloud-manager            kubernetes
+    >   app-1                    kubernetes
+    >   netdata                  kubernetes
+    >   portainer                kubernetes
+    >   metrics-server           kubernetes
+    >   testenetes               kubernetes
+    >   lakefs                   kubernetes
+    >   cockroachdb              kubernetes
+    >   linkerd2                 kubernetes
+    >   jaeger                   kubernetes
+    >   loki                     kubernetes
+    >   redpanda                 kubernetes
+    >   redpanda                 kubernetes
+    >   wordpress                kubernetes
+    >   prometheus-operator      kubernetes
+    >   paul-test-1              kubernetes
+    >   hector test              kubernetes
+    >   kubesphere               kubernetes
+    >   zalkar-test-3865         kubernetes
+    >   sluo-k8s-test-july-26    kubernetes
+    >   cloudcasa                kubernetes
+    >   openebs                  kubernetes
+    >   app-vlad-short-name      kubernetes
+    >   posthog                  kubernetes
+    >   sluo-test-k8s            kubernetes
+    >   test-this-out-sl         kubernetes
+    >   testkubernetesapp        kubernetes
+    >   op-scim-bridge           kubernetes
+    >   ingress-nginx            kubernetes
+    >   monitoring               kubernetes
+    >   keda                     kubernetes
+
+    #
+    # I can't find how to get the details of a 1-click app using the command line.
+    # I can't find how to get the 'slug' for a 1-click app from the app web page.
+    # I can't find how to list the apps installed on a cluster ?
+    #
+
+    doctl \
+        kubernetes \
+            1-click install \
+                "${clusterid:?}" \
+                    --1-clicks \
+                        'ingress-nginx'
+
+    >   Notice: Successfully kicked off addon job.
+
+
+# -----------------------------------------------------
+# Verify Nginx Ingress was installed correctly.
+# https://marketplace.digitalocean.com/apps/nginx-ingress-controller
+#[root@oceanic]
+
+    kubectl \
+        get pods \
+            --all-namespaces \
+            --selector \
+                'app.kubernetes.io/name=ingress-nginx'
+
+    >   NAMESPACE       NAME                                        READY   STATUS      RESTARTS   AGE
+    >   ingress-nginx   ingress-nginx-admission-create-g5npm        0/1     Completed   0          17s
+    >   ingress-nginx   ingress-nginx-admission-patch-hqvzv         0/1     Completed   0          17s
+    >   ingress-nginx   ingress-nginx-controller-68649d49b8-phj9m   0/1     Running     0          19s
+
+
+# -----------------------------------------------------
+# Get the IP address of the Nginx Ingress.
+# https://marketplace.digitalocean.com/apps/nginx-ingress-controller
+#[root@oceanic]
+
+    kubectl \
+        get svc \
+            --namespace \
+                'ingress-nginx'
+
+    >   NAME                                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
+    >   ingress-nginx-controller             LoadBalancer   10.245.225.99   <pending>     80:31558/TCP,443:31349/TCP   2m16s
+    >   ingress-nginx-controller-admission   ClusterIP      10.245.0.82     <none>        443/TCP                      2m17s
+
+    >   NAME                                 TYPE           CLUSTER-IP      EXTERNAL-IP       PORT(S)                      AGE
+    >   ingress-nginx-controller             LoadBalancer   10.245.225.99   134.209.137.201   80:31558/TCP,443:31349/TCP   15m
+    >   ingress-nginx-controller-admission   ClusterIP      10.245.0.82     <none>            443/TCP                      15m
+
+
+

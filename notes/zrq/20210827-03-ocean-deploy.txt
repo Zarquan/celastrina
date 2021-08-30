@@ -1,0 +1,228 @@
+#
+# <meta:header>
+#   <meta:licence>
+#     Copyright (C) 2021 by Wizzard Solutions Ltd, ischnura@metagrid.co.uk
+#
+#     This information is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This information is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#   </meta:licence>
+# </meta:header>
+#
+#
+
+
+    Target:
+
+        Learn how to deploy a Besu ETH1 client in a K8s Pod.
+
+    Result:
+
+        Work in progres ..
+
+    Reference:
+
+        DigitalOcean doctl commands
+        https://docs.digitalocean.com/reference/doctl/reference/
+
+
+# -----------------------------------------------------
+
+    Hyperledger Besu Stack: Hyperledger Besu, Orion, EthSigner
+    https://consensys.net/quorum/faq/
+
+        Hyperledger Besu is an open-source Ethereum client maintained by the Hyperledger community,
+        including ConsenSys. Besu is Mainnet compatible, Java-based, Apache 2.0 licensed, and
+        extensible through its Java plugin framework.
+
+        Orion is a private transaction manager for the Hyperledger Besu client, developed under
+        the Apache 2.0 license and written in Java.
+
+        EthSigner is a client-agnostic Ethereum transaction signer written in Java and Apache 2.0
+        licensed. EthSigner offers private key storage and management by separating private key
+        management from transaction validation
+
+        ----
+
+        GoQuorum is an open-source Ethereum client maintained by ConsenSys. GoQuorum is Go-based
+        and GPL licensed.
+
+        Tessera is a private transaction manager for the GoQuorum client, developed under the
+        Apache 2.0 license and written in Java.
+
+        EthSigner is a client-agnostic Ethereum transaction signer written in Java and Apache 2.0
+        licensed. EthSigner offers private key storage and management by separating private key
+        management from transaction validation.
+
+        ----
+
+        Hyperledger Besu is the Enterprise Ethereum client designed for either public or private
+        permissioned network use cases. Built from scratch, Hyperledger Besu is Apache 2.0 licensed
+        and written in Java. Hyperledger Besu is a project in Hyperledger and maintained by ConsenSys,
+        among other institutions. Go here for more information.
+
+
+# -----------------------------------------------------
+
+    Besu System requirements
+    https://besu.hyperledger.org/en/stable/HowTo/Get-Started/System-Requirements/System-Requirements-Public/
+
+        For Mainnet and testnets, the minimum Java Virtual Machine (JVM) memory requirement is 8 GB.
+
+        Fast synchronization with pruning enabled requires approximately 750 GB of disk space.
+        Full synchronization requires approximately 3 TB.
+
+    Run Besu in a Docker image
+    https://besu.hyperledger.org/en/stable/HowTo/Get-Started/Installation-Options/Run-Docker-Image/
+
+        To run a Besu node in a container connected to the Ethereum MainNet:
+
+            docker run hyperledger/besu:latest
+
+    Pruning
+
+        In Besu, pruning reduces the storage required by removing state trie nodes that are unreachable
+        from recent blocks.
+
+        Pruning is disabled by default, and can be enabled with the --pruning-enabled command line option.
+
+    Goerli testnet
+
+        To run a node on Goerli specifying a data directory:
+
+            besu --network=goerli --data-path=<path>/<goerlidata-path>
+
+        Where <path> and <goerlidata-path> are the path and directory to save the Goerli chain data to.
+
+
+
+
+
+
+# -----------------------------------------------------
+
+    # From the docker-compose file:
+
+        image: hyperledger/besu:latest
+        command: ["--network=goerli",
+                  "--data-path=/opt/besu/data/data",
+                  "--host-allowlist=*",
+                  "--sync-mode=FAST",
+                  "--rpc-http-enabled",
+                  "--rpc-http-cors-origins=*",
+                  "--rpc-http-api=ETH,NET,CLIQUE,DEBUG,MINER,NET,PERM,ADMIN,EEA,TXPOOL,PRIV,WEB3"]
+        volumes:
+          - ./besu:/opt/besu/data
+        ports:
+          # Map the p2p port(30303) and RPC HTTP port(8545)
+          - "8545:8545"
+          - "30303:30303"
+
+
+
+# -----------------------------------------------------
+
+    Besu - configuring NAT
+    https://besu.hyperledger.org/en/stable/HowTo/Find-and-Connect/Specifying-NAT/
+
+        Use the --nat-method option to specify the NAT method.
+        Options are: UPNP, KUBERNETES, DOCKER, AUTO, and NONE.
+
+# -----------------------------------------------------
+
+    Installing Helm and HelmDiff
+    helm plugin install https://github.com/databus23/helm-diff --version master
+
+# -----------------------------------------------------
+
+    Exposing non-http ports using Nginx Ingress
+    https://github.com/kubernetes/ingress-nginx/blob/main/docs/user-guide/exposing-tcp-udp-services.md
+
+# -----------------------------------------------------
+
+    Besu-Kubernetes (k8s)
+    https://github.com/ConsenSys/quorum-kubernetes
+
+    The following repo has example reference implementations of private networks using k8s.
+    These examples are aimed at developers and ops people to get them familiar with how to
+    run a private ethereum network in k8s and understand the concepts involved.
+
+    Reqirements
+
+        Helm
+        https://helm.sh/docs/
+
+        Helmfile
+        https://github.com/roboll/helmfile
+
+        HelmDiff
+        https://github.com/databus23/helm-diff
+
+        Recommended requirements for each Besu node are 4GB of memory.
+
+
+    Install HelmDiff
+    helm plugin install https://github.com/databus23/helm-diff --version master
+
+
+# -----------------------------------------------------
+
+    So we need 4G of memory and 750G byte of persistent storage.
+    Use Prometheus to track the use.
+
+# -----------------------------------------------------
+
+    Our Pods are stateful.
+    besu-1 is linked to corresponding persistent volume claim
+
+    We only have one set of crypto keys and so we only have one instance of Besu.
+
+    We don't need LoadBalancing in terms of balancing load between Pods, but we do need to direct the traffic to the right Pod.
+
+    We don't have any HTTP/s services, so an Ingress is probably not the right tool for the job.
+
+        There is this : Exposing non-http ports using Nginx Ingress
+        https://github.com/kubernetes/ingress-nginx/blob/main/docs/user-guide/exposing-tcp-udp-services.md
+
+        but I think all we need is a basic LoadBalancer
+
+
+    https://docs.digitalocean.com/products/kubernetes/how-to/add-load-balancers/
+
+    >   spec:
+    >     type: LoadBalancer
+    >     selector:
+    >       app: nginx-example
+    >     ports:
+    >       - name: http
+    >         protocol: TCP
+    >         port: 80
+    >         targetPort: 80
+
+    >   apiVersion: v1
+    >   kind: Service
+    >   metadata:
+    >     name: ngnix-lb
+    >     annotations:
+    >       service.beta.kubernetes.io/do-loadbalancer-protocol: "http"
+    >       service.beta.kubernetes.io/do-loadbalancer-size-slug: "lb-large"
+    >   spec:
+    >     type: LoadBalancer
+    >     selector:
+    >       app: nginx-example
+    >     ports:
+    >       - name: http
+    >         protocol: TCP
+    >         port: 80
+    >         targetPort: 80
+
+

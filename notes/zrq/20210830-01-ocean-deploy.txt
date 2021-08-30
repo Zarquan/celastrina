@@ -1,0 +1,561 @@
+#
+# <meta:header>
+#   <meta:licence>
+#     Copyright (C) 2021 by Wizzard Solutions Ltd, ischnura@metagrid.co.uk
+#
+#     This information is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This information is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#   </meta:licence>
+# </meta:header>
+#
+#zrq-notes-time
+#zrq-notes-indent
+#zrq-notes-crypto
+#zrq-notes-ansible
+#zrq-notes-osformat
+#
+
+    Target:
+
+        Learn how to deploy a Besu ETH1 client in a K8s Pod.
+
+    Result:
+
+        Work in progres ..
+
+# -----------------------------------------------------
+# Create a client container to work in.
+#[user@desktop]
+
+    source "${HOME}/celastrina.env"
+
+    podman run \
+        --rm \
+        --tty \
+        --interactive \
+        --hostname oceanic \
+        --env "DIGITALOCEAN_ACCESS_TOKEN=$(secret 'digital.ocean.token')" \
+        --env "SSH_AUTH_SOCK=/mnt/ssh_auth_sock" \
+        --volume "${SSH_AUTH_SOCK}:/mnt/ssh_auth_sock:rw,z" \
+        --volume "${CELASTRINA_CODE:?}/deploy:/deploy:ro,z" \
+        atolmis/digitalocean-client:2021.08.25
+
+
+# -----------------------------------------------------
+# List our droplets.
+#[root@oceanic]
+
+    doctl compute droplet list
+
+    >   ID           Name        Public IPv4      Private IPv4    Public IPv6                 Memory    VCPUs    Disk    Region    Image            VPC UUID                                Status    Tags    Features                   Volumes
+    >   231004055    Hizzoria    46.101.32.198    10.106.0.2      2a03:b0c0:1:d0::b53:6001    1024      1        25      lon1      Fedora 33 x64    c873dfe8-9619-4801-9c18-f3fdc290b0fd    active            private_networking,ipv6
+
+
+# -----------------------------------------------------
+# List our K8s clusters.
+#[root@oceanic]
+
+    doctl \
+        kubernetes \
+            cluster \
+                list
+
+    >   ID    Name    Region    Version    Auto Upgrade    Status    Node Pools
+
+
+# -----------------------------------------------------
+# Create a new K8s cluster.
+#[root@oceanic]
+
+    dovmcount=2
+    doregion=ams3
+    dovmsize=s-1vcpu-2gb
+
+    doctl \
+        --output json \
+        kubernetes \
+            cluster \
+                create \
+                    'etherium-testnet-cluster' \
+                    --size    ${dovmsize:?} \
+                    --count   ${dovmcount:?} \
+                    --region  ${doregion:?} \
+    | tee /tmp/cluster.json \
+    | jq '.'
+
+    >   Notice: Cluster is provisioning, waiting for cluster to be running
+    >   ...................................................................................
+    >   Notice: Cluster created, fetching credentials
+    >   Notice: Adding cluster credentials to kubeconfig file found in "/root/.kube/config"
+    >   Notice: Setting current-context to do-ams3-etherium-testnet-cluster
+
+    >   [
+    >     {
+    >       "id": "7a9f1962-4b74-46e8-ad8e-f7721d9fe890",
+    >       "name": "etherium-testnet-cluster",
+    >       "region": "ams3",
+    >       "version": "1.21.2-do.2",
+    >       "cluster_subnet": "10.244.0.0/16",
+    >       "service_subnet": "10.245.0.0/16",
+    >       "ipv4": "188.166.49.19",
+    >       "endpoint": "https://7a9f1962-4b74-46e8-ad8e-f7721d9fe890.k8s.ondigitalocean.com",
+    >       "tags": [
+    >         "k8s",
+    >         "k8s:7a9f1962-4b74-46e8-ad8e-f7721d9fe890"
+    >       ],
+    >       "vpc_uuid": "6e933088-8eb3-4caf-8764-02cbfe92369c",
+    >       "node_pools": [
+    >         {
+    >           "id": "fcf3450f-52d1-44fc-b557-01cb061079ef",
+    >           "name": "etherium-testnet-cluster-default-pool",
+    >           "size": "s-1vcpu-2gb",
+    >           "count": 2,
+    >           "tags": [
+    >             "k8s",
+    >             "k8s:7a9f1962-4b74-46e8-ad8e-f7721d9fe890",
+    >             "k8s:worker"
+    >           ],
+    >           "nodes": [
+    >             {
+    >               "id": "1ddf4539-2e51-4397-a2b0-3bb2ae47fa39",
+    >               "name": "etherium-testnet-cluster-default-pool-8d2u8",
+    >               "status": {
+    >                 "state": "running"
+    >               },
+    >               "droplet_id": "262448572",
+    >               "created_at": "2021-08-30T00:03:36Z",
+    >               "updated_at": "2021-08-30T00:08:22Z"
+    >             },
+    >             {
+    >               "id": "e07e2dfb-dee8-44f0-beec-47219e9e23e8",
+    >               "name": "etherium-testnet-cluster-default-pool-8d2uu",
+    >               "status": {
+    >                 "state": "running"
+    >               },
+    >               "droplet_id": "262448571",
+    >               "created_at": "2021-08-30T00:03:36Z",
+    >               "updated_at": "2021-08-30T00:08:22Z"
+    >             }
+    >           ]
+    >         }
+    >       ],
+    >       "maintenance_policy": {
+    >         "start_time": "00:00",
+    >         "duration": "4h0m0s",
+    >         "day": "any"
+    >       },
+    >       "surge_upgrade": true,
+    >       "status": {
+    >         "state": "running"
+    >       },
+    >       "created_at": "2021-08-30T00:03:36Z",
+    >       "updated_at": "2021-08-30T00:11:05Z"
+    >     }
+    >   ]
+
+
+# -----------------------------------------------------
+# Test our kubectl access.
+#[root@oceanic]
+
+    kubectl \
+        cluster-info
+
+    >   Kubernetes control plane is running at https://7a9f1962-4b74-46e8-ad8e-f7721d9fe890.k8s.ondigitalocean.com
+    >   CoreDNS is running at https://7a9f1962-4b74-46e8-ad8e-f7721d9fe890.k8s.ondigitalocean.com/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+
+
+    kubectl \
+        --output json \
+        version
+
+    >   {
+    >     "clientVersion": {
+    >       "major": "1",
+    >       "minor": "20",
+    >       "gitVersion": "v1.20.5",
+    >       "gitCommit": "6b1d87acf3c8253c123756b9e61dac642678305f",
+    >       "gitTreeState": "archive",
+    >       "buildDate": "2021-03-30T00:00:00Z",
+    >       "goVersion": "go1.16",
+    >       "compiler": "gc",
+    >       "platform": "linux/amd64"
+    >     },
+    >     "serverVersion": {
+    >       "major": "1",
+    >       "minor": "21",
+    >       "gitVersion": "v1.21.2",
+    >       "gitCommit": "092fbfbf53427de67cac1e9fa54aaa09a28371d7",
+    >       "gitTreeState": "clean",
+    >       "buildDate": "2021-06-16T12:53:14Z",
+    >       "goVersion": "go1.16.5",
+    >       "compiler": "gc",
+    >       "platform": "linux/amd64"
+    >     }
+    >   }
+
+
+# -----------------------------------------------------
+# Create a Namespace for our Ethereum project.
+#[root@oceanic]
+
+
+    cat > /tmp/namespace.yml << EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ethereum-ns
+EOF
+
+    kubectl \
+        apply -f \
+            /tmp/namespace.yml
+
+
+    >   namespace/ethereum-ns created
+
+
+# -----------------------------------------------------
+# Create a StatefulSet for our Besu instance.
+#[root@oceanic]
+
+    cat > /tmp/besu-set.yml << 'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: besu-svc
+  namespace: ethereum-ns
+  labels:
+    app: besu-app
+spec:
+  ports:
+  - port: 8545
+    name: besu-rpc
+
+  clusterIP: None
+  selector:
+    app: besu-app
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: besu-set
+  namespace: ethereum-ns
+spec:
+
+  selector:
+    matchLabels:
+      app: besu-app
+
+  serviceName: besu-svc
+  replicas: 1
+
+  template:
+
+    metadata:
+      labels:
+        app: besu-app
+
+    spec:
+      initContainers:
+
+      # https://stackoverflow.com/a/51195446
+      # https://stackoverflow.com/questions/43544370/kubernetes-how-to-set-volumemount-user-group-and-file-permissions
+      - name: besu-chown
+        # https://docs.digitalocean.com/products/kubernetes/resources/clusterlint-errors/#latest-tag
+        # https://docs.digitalocean.com/products/kubernetes/resources/clusterlint-errors/#fully-qualified-image
+        image: docker.io/library/alpine:3.14.2
+
+        command:
+        - chown
+        - -R
+        - 1000:1000
+        - /opt/besu/data
+
+        volumeMounts:
+        - name: besu-pvc
+          mountPath: "/opt/besu/data"
+
+      containers:
+      - name: besu
+        # https://docs.digitalocean.com/products/kubernetes/resources/clusterlint-errors/#latest-tag
+        # https://docs.digitalocean.com/products/kubernetes/resources/clusterlint-errors/#fully-qualified-image
+        image: docker.io/hyperledger/besu:21.7
+
+        args:
+        - "--network=goerli"
+        - "--data-path=/opt/besu/data"
+        - "--host-allowlist=*"
+        - "--sync-mode=FAST"
+        - "--nat-method=KUBERNETES"
+        - "--rpc-http-enabled"
+        - "--rpc-http-cors-origins=*"
+        - "--rpc-http-api=ETH,NET,CLIQUE,DEBUG,MINER,NET,PERM,ADMIN,EEA,TXPOOL,PRIV,WEB3"
+
+        ports:
+        - containerPort: 8545
+          name: besu-rpc
+        - containerPort: 30303
+          name: besu-p2p
+
+        volumeMounts:
+        - name: besu-pvc
+          mountPath: "/opt/besu/data"
+
+  volumeClaimTemplates:
+  - metadata:
+      name: besu-pvc
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 750Gi
+      storageClassName: do-block-storage
+EOF
+
+
+    kubectl \
+        apply -f \
+            /tmp/besu-set.yml
+
+
+    >   statefulset.apps/besu-set created
+
+
+# -----------------------------------------------------
+# Create a LoadBalancer for our Besu instance.
+#[root@oceanic]
+
+    cat > /tmp/besu-tcp.yml << EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: besu-tcp
+  namespace: ethereum-ns
+  annotations:
+    service.beta.kubernetes.io/do-loadbalancer-protocol: "tcp"
+spec:
+  type: LoadBalancer
+  selector:
+    app: besu-app
+  ports:
+    - name: eth1-p2p
+      protocol: TCP
+      port: 30303
+      targetPort: 30303
+EOF
+
+    kubectl \
+        apply -f \
+            /tmp/besu-tcp.yml
+
+    >   service/besu-tcp created
+
+
+# -----------------------------------------------------
+# List our Pods.
+#[root@oceanic]
+
+    kubectl \
+        --namespace 'ethereum-ns' \
+        get Pods
+
+    >   NAME         READY   STATUS    RESTARTS   AGE
+    >   besu-set-0   1/1     Running   0          2m55s
+
+
+# -----------------------------------------------------
+# Get the Besu logs.
+#[root@oceanic]
+
+    kubectl \
+        --namespace 'ethereum-ns' \
+        logs 'besu-set-0'
+
+    >   2021-08-30 02:42:39.976+00:00 | main | INFO  | Besu | Using LibEthPairings native alt bn128
+    >   2021-08-30 02:42:39.982+00:00 | main | INFO  | Besu | Using native secp256k1
+    >   2021-08-30 02:42:39.992+00:00 | main | INFO  | Besu | Starting Besu version: besu/v21.7.2/linux-x86_64/adoptopenjdk-java-11
+    >   2021-08-30 02:42:40.501+00:00 | main | WARN  | Besu | Permissions are disabled. Cannot enable PERM APIs when not using Permissions.
+    >   2021-08-30 02:42:40.507+00:00 | main | INFO  | Besu | Static Nodes file = /opt/besu/data/static-nodes.json
+    >   2021-08-30 02:42:40.509+00:00 | main | INFO  | StaticNodesParser | StaticNodes file /opt/besu/data/static-nodes.json does not exist, no static connections will be created.
+    >   2021-08-30 02:42:40.514+00:00 | main | INFO  | Besu | Connecting to 0 static nodes.
+    >   2021-08-30 02:42:40.529+00:00 | main | INFO  | Besu | Security Module: localfile
+    >   2021-08-30 02:42:40.588+00:00 | main | INFO  | RocksDBKeyValueStorageFactory | No existing database detected at /opt/besu/data. Using version 1
+    >   2021-08-30 02:42:42.071+00:00 | main | INFO  | KeyPairUtil | Generated new public key 0x400e06f8a5e2f03aa069c23c72618c8babf30ca6282aeb809931d0a02c5c7a5a29bc1716f760b9856d772171ff5f6b8d16b053c65566f944cf54b1c10de654df and stored it to /opt/besu/data/key
+    >   2021-08-30 02:42:42.088+00:00 | main | WARN  | Besu | Privacy is disabled. Cannot use EEA/PRIV API methods when not using Privacy.
+    >   2021-08-30 02:42:42.537+00:00 | main | INFO  | ProtocolScheduleBuilder | Protocol schedule created with milestones: [Petersburg: 0, Istanbul: 1561651, Berlin: 4460644, London: 5062605]
+    >   2021-08-30 02:42:43.292+00:00 | main | INFO  | RunnerBuilder | Detecting NAT service.
+    >   2021-08-30 02:42:43.773+00:00 | main | INFO  | Runner | Starting Ethereum main loop ...
+    >   2021-08-30 02:42:43.774+00:00 | main | INFO  | KubernetesNatManager | Starting kubernetes NAT manager.
+    >   2021-08-30 02:42:44.662+00:00 | main | INFO  | NetworkRunner | Starting Network.
+    >   2021-08-30 02:42:44.672+00:00 | main | INFO  | DefaultP2PNetwork | Starting DNS discovery with URL enrtree://AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE@all.goerli.ethdisco.net
+    >   2021-08-30 02:42:45.183+00:00 | nioEventLoopGroup-2-1 | INFO  | RlpxAgent | P2P RLPx agent started and listening on /0:0:0:0:0:0:0:0:30303.
+    >   2021-08-30 02:42:45.185+00:00 | main | INFO  | PeerDiscoveryAgent | Starting peer discovery agent on host=0.0.0.0, port=30303
+    >   2021-08-30 02:42:45.349+00:00 | vert.x-eventloop-thread-1 | INFO  | VertxPeerDiscoveryAgent | Started peer discovery agent successfully, on effective host=0:0:0:0:0:0:0:0 and port=30303
+    >   2021-08-30 02:42:45.353+00:00 | main | INFO  | PeerDiscoveryAgent | P2P peer discovery agent started and listening on /0:0:0:0:0:0:0:0:30303
+    >   2021-08-30 02:42:45.462+00:00 | main | INFO  | PeerDiscoveryAgent | Writing node record to disk. NodeRecord{seq=1, publicKey=0x03400e06f8a5e2f03aa069c23c72618c8babf30ca6282aeb809931d0a02c5c7a5a, udpAddress=Optional[/127.0.0.1:30303], tcpAddress=Optional[/127.0.0.1:30303], asBase64=-Jq4QPvDknvOlZBiMclf9XZnwnWMHS91FO0hT9yfqHMukIqIfhmUiGzEqGCWEEW1s42u4ilAbatDunGIMoV_US6rOw8Bg2V0aMrJhKP1qwiDF9QzgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQNADgb4peLwOqBpwjxyYYyLq_MMpigq64CZMdCgLFx6WoN0Y3CCdl-DdWRwgnZf, nodeId=0xf521541261d9c6fbf0b75e5eb9da2682f0a9c1589faa3c95539a29b3c3c4a34c}
+    >   2021-08-30 02:42:45.622+00:00 | main | INFO  | DefaultP2PNetwork | Enode URL enode://400e06f8a5e2f03aa069c23c72618c8babf30ca6282aeb809931d0a02c5c7a5a29bc1716f760b9856d772171ff5f6b8d16b053c65566f944cf54b1c10de654df@127.0.0.1:30303
+    >   2021-08-30 02:42:45.636+00:00 | main | INFO  | DefaultP2PNetwork | Node address 0xb9da2682f0a9c1589faa3c95539a29b3c3c4a34c
+    >   2021-08-30 02:42:45.749+00:00 | main | INFO  | DefaultSynchronizer | Starting synchronizer.
+    >   2021-08-30 02:42:45.775+00:00 | main | INFO  | FastSyncDownloader | Starting fast sync.
+    >   2021-08-30 02:42:45.799+00:00 | main | INFO  | WaitForPeersTask | Waiting for 5 peers to connect. 0 peers currently connected.
+    >   2021-08-30 02:42:45.873+00:00 | main | INFO  | JsonRpcHttpService | Starting JSON-RPC service on 0.0.0.0:8545
+    >   2021-08-30 02:42:46.219+00:00 | vert.x-eventloop-thread-1 | INFO  | JsonRpcHttpService | JSON-RPC service started and listening on 0.0.0.0:8545
+    >   2021-08-30 02:42:46.241+00:00 | main | INFO  | Runner | Ethereum main loop is up.
+    >   2021-08-30 02:42:46.265+00:00 | main | INFO  | AutoTransactionLogBloomCachingService | Starting auto transaction log bloom caching service.
+    >   2021-08-30 02:42:46.282+00:00 | main | INFO  | LogBloomCacheMetadata | Lookup cache metadata file in data directory: /opt/besu/data/caches
+    >   2021-08-30 02:43:15.158+00:00 | nioEventLoopGroup-3-6 | INFO  | WaitForPeersTask | Waiting for 4 peers to connect.
+    >   2021-08-30 02:43:24.956+00:00 | nioEventLoopGroup-3-7 | INFO  | WaitForPeersTask | Waiting for 2 peers to connect.
+    >   2021-08-30 02:43:25.648+00:00 | nioEventLoopGroup-3-8 | INFO  | WaitForPeersTask | Waiting for 1 peers to connect.
+    >   2021-08-30 02:43:26.214+00:00 | nioEventLoopGroup-3-3 | INFO  | WaitForPeersTask | Finished waiting for 5 peers to connect.
+    >   2021-08-30 02:43:26.259+00:00 | nioEventLoopGroup-3-3 | INFO  | FastSyncActions | Waiting for valid peers with chain height information.  3 / 5 required peers currently available.
+    >   2021-08-30 02:43:26.265+00:00 | nioEventLoopGroup-3-5 | INFO  | WaitForPeersTask | Finished waiting for 5 peers to connect.
+    >   2021-08-30 02:43:26.250+00:00 | nioEventLoopGroup-3-4 | INFO  | WaitForPeersTask | Finished waiting for 5 peers to connect.
+    >   2021-08-30 02:43:31.263+00:00 | EthScheduler-Timer-0 | INFO  | FastSyncActions | Selecting block number 5407965 as fast sync pivot block.
+    >   2021-08-30 02:43:31.268+00:00 | EthScheduler-Timer-0 | INFO  | PivotBlockRetriever | Retrieve a pivot block that can be confirmed by at least 5 peers.
+    >   2021-08-30 02:43:31.319+00:00 | EthScheduler-Timer-0 | INFO  | PivotBlockConfirmer | Confirm pivot block 5407965 with at least 5 peers.
+    >   2021-08-30 02:43:31.361+00:00 | nioEventLoopGroup-3-7 | INFO  | PivotBlockConfirmer | Received 1 confirmation(s) for pivot block header 5407965: 0xba14823d392e3a00ce7c42c87b7ad221e382beb72ec7cdfd95dc6b65c7f5e91f
+    >   2021-08-30 02:43:31.372+00:00 | nioEventLoopGroup-3-6 | INFO  | PivotBlockConfirmer | Received 2 confirmation(s) for pivot block header 5407965: 0xba14823d392e3a00ce7c42c87b7ad221e382beb72ec7cdfd95dc6b65c7f5e91f
+    >   ....
+    >   ....
+
+
+# -----------------------------------------------------
+# Get the Besu status.
+#[root@oceanic]
+
+    kubectl \
+        --namespace 'ethereum-ns' \
+        exec 'besu-set-0' \
+        -- curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' besu-set-0:8545
+
+    >   {
+    >     "jsonrpc" : "2.0",
+    >     "id" : 1,
+    >     "result" : "0x5"
+    >   }
+
+
+# -----------------------------------------------------
+# Check the data directory.
+#[root@oceanic]
+
+    kubectl \
+        --namespace 'ethereum-ns' \
+        exec 'besu-set-0' \
+        -- du -h -d 2 /opt/besu/data
+
+    >   8.0K	/opt/besu/data/caches
+    >   75M	/opt/besu/data/database
+    >   16K	/opt/besu/data/lost+found
+    >   4.0K	/opt/besu/data/fastsync/statequeue
+    >   8.0K	/opt/besu/data/fastsync
+    >   4.0K	/opt/besu/data/uploads
+    >   75M	/opt/besu/data
+
+
+    kubectl \
+        --namespace 'ethereum-ns' \
+        exec 'besu-set-0' \
+        -- ls -al /opt/besu/data
+
+    >   total 56
+    >   drwxr-xr-x 7 besu besu  4096 Aug 30 02:45 .
+    >   drwxr-xr-x 1 besu besu  4096 Aug 30 02:41 ..
+    >   -rw-r--r-- 1 besu besu   217 Aug 30 02:42 besu.networks
+    >   -rw-r--r-- 1 besu besu   192 Aug 30 02:42 besu.ports
+    >   drwxr-xr-x 2 besu besu  4096 Aug 30 02:42 caches
+    >   drwxr-xr-x 2 besu besu  4096 Aug 30 02:42 database
+    >   -rw-r--r-- 1 besu besu    13 Aug 30 02:42 DATABASE_METADATA.json
+    >   drwxr-xr-x 3 besu besu  4096 Aug 30 02:42 fastsync
+    >   -rw------- 1 besu besu    66 Aug 30 02:42 key
+    >   drwx------ 2 besu besu 16384 Aug 30 02:41 lost+found
+    >   drwxr-xr-x 2 besu besu  4096 Aug 30 02:45 uploads
+
+
+# -----------------------------------------------------
+# Follow the Besu logs.
+#[root@oceanic]
+
+    kubectl \
+        --namespace 'ethereum-ns' \
+        logs 'besu-set-0' \
+            --follow
+
+    >   ....
+    >   2021-08-30 02:43:15.158+00:00 | nioEventLoopGroup-3-6 | INFO  | WaitForPeersTask | Waiting for 4 peers to connect.
+    >   2021-08-30 02:43:24.956+00:00 | nioEventLoopGroup-3-7 | INFO  | WaitForPeersTask | Waiting for 2 peers to connect.
+    >   2021-08-30 02:43:25.648+00:00 | nioEventLoopGroup-3-8 | INFO  | WaitForPeersTask | Waiting for 1 peers to connect.
+    >   2021-08-30 02:43:26.214+00:00 | nioEventLoopGroup-3-3 | INFO  | WaitForPeersTask | Finished waiting for 5 peers to connect.
+    >   2021-08-30 02:43:26.259+00:00 | nioEventLoopGroup-3-3 | INFO  | FastSyncActions | Waiting for valid peers with chain height information.  3 / 5 required peers currently available.
+    >   2021-08-30 02:43:26.265+00:00 | nioEventLoopGroup-3-5 | INFO  | WaitForPeersTask | Finished waiting for 5 peers to connect.
+    >   2021-08-30 02:43:26.250+00:00 | nioEventLoopGroup-3-4 | INFO  | WaitForPeersTask | Finished waiting for 5 peers to connect.
+    >   2021-08-30 02:43:31.263+00:00 | EthScheduler-Timer-0 | INFO  | FastSyncActions | Selecting block number 5407965 as fast sync pivot block.
+    >   2021-08-30 02:43:31.268+00:00 | EthScheduler-Timer-0 | INFO  | PivotBlockRetriever | Retrieve a pivot block that can be confirmed by at least 5 peers.
+    >   2021-08-30 02:43:31.319+00:00 | EthScheduler-Timer-0 | INFO  | PivotBlockConfirmer | Confirm pivot block 5407965 with at least 5 peers.
+    >   2021-08-30 02:43:31.361+00:00 | nioEventLoopGroup-3-7 | INFO  | PivotBlockConfirmer | Received 1 confirmation(s) for pivot block header 5407965: 0xba14823d392e3a00ce7c42c87b7ad221e382beb72ec7cdfd95dc6b65c7f5e91f
+    >   2021-08-30 02:43:31.372+00:00 | nioEventLoopGroup-3-6 | INFO  | PivotBlockConfirmer | Received 2 confirmation(s) for pivot block header 5407965: 0xba14823d392e3a00ce7c42c87b7ad221e382beb72ec7cdfd95dc6b65c7f5e91f
+    >   2021-08-30 02:50:18.560+00:00 | nioEventLoopGroup-3-5 | INFO  | PivotBlockConfirmer | Received 3 confirmation(s) for pivot block header 5407965: 0xba14823d392e3a00ce7c42c87b7ad221e382beb72ec7cdfd95dc6b65c7f5e91f
+    >   ....
+
+    >   ....
+    >   2021-08-30 03:15:50.446+00:00 | EthScheduler-Services-8 (importBlock) | INFO  | FastImportBlocksStep | Completed importing chain segment 81001 to 81200, Peers: 4
+    >   2021-08-30 03:15:52.204+00:00 | EthScheduler-Services-8 (importBlock) | INFO  | FastImportBlocksStep | Completed importing chain segment 81201 to 81400, Peers: 4
+    >   2021-08-30 03:15:53.126+00:00 | EthScheduler-Services-8 (importBlock) | INFO  | FastImportBlocksStep | Completed importing chain segment 81401 to 81600, Peers: 4
+    >   2021-08-30 03:15:54.361+00:00 | EthScheduler-Services-8 (importBlock) | INFO  | FastImportBlocksStep | Completed importing chain segment 81601 to 81800, Peers: 4
+    >   2021-08-30 03:16:04.085+00:00 | EthScheduler-Services-8 (importBlock) | INFO  | FastImportBlocksStep | Completed importing chain segment 81801 to 82000, Peers: 4
+    >   2021-08-30 03:16:05.246+00:00 | EthScheduler-Services-8 (importBlock) | INFO  | FastImportBlocksStep | Completed importing chain segment 82001 to 82200, Peers: 3
+    >   2021-08-30 03:16:06.558+00:00 | EthScheduler-Services-8 (importBlock) | INFO  | FastImportBlocksStep | Completed importing chain segment 82201 to 82400, Peers: 3
+    >   ....
+
+    >   ....
+    >   2021-08-30 03:18:04.495+00:00 | EthScheduler-Timer-0 | INFO  | AbstractRetryingPeerTask | No peers available, waiting for peers: 0
+    >   2021-08-30 03:18:04.497+00:00 | EthScheduler-Timer-0 | INFO  | AbstractRetryingPeerTask | No peers available, waiting for peers: 0
+    >   2021-08-30 03:18:07.679+00:00 | EthScheduler-Timer-0 | INFO  | FastSyncTargetManager | No sync target, waiting for peers: 0
+    >   2021-08-30 03:18:08.266+00:00 | EthScheduler-Services-4 (batchDownloadData) | INFO  | AbstractRetryingPeerTask | No peers available, waiting for peers: 0
+    >   2021-08-30 03:18:08.285+00:00 | EthScheduler-Timer-0 | INFO  | AbstractRetryingPeerTask | No peers available, waiting for peers: 0
+    >   2021-08-30 03:18:08.291+00:00 | EthScheduler-Services-4 (batchDownloadData) | INFO  | AbstractRetryingPeerTask | No peers available, waiting for peers: 0
+    >   2021-08-30 03:18:08.297+00:00 | EthScheduler-Services-4 (batchDownloadData) | INFO  | AbstractRetryingPeerTask | No peers available, waiting for peers: 0
+    >   ....
+    >   ....
+    >   2021-08-30 03:18:10.078+00:00 | EthScheduler-Services-4 (batchDownloadData) | INFO  | AbstractRetryingPeerTask | No peers available, waiting for peers: 0
+    >   2021-08-30 03:18:10.083+00:00 | EthScheduler-Services-4 (batchDownloadData) | INFO  | AbstractRetryingPeerTask | No peers available, waiting for peers: 0
+    >   2021-08-30 03:18:12.684+00:00 | EthScheduler-Timer-0 | INFO  | FastSyncTargetManager | No sync target, waiting for peers: 0
+    >   2021-08-30 03:18:13.267+00:00 | EthScheduler-Timer-0 | INFO  | AbstractRetryingPeerTask | No peers available, waiting for peers: 0
+    >   2021-08-30 03:18:13.300+00:00 | EthScheduler-Services-4 (batchDownloadData) | INFO  | AbstractRetryingPeerTask | No peers available, waiting for peers: 0
+    >   2021-08-30 03:18:13.303+00:00 | EthScheduler-Timer-0 | INFO  | AbstractRetryingPeerTask | No peers available, waiting for peers: 0
+    >   2021-08-30 03:18:13.310+00:00 | EthScheduler-Timer-0 | INFO  | AbstractRetryingPeerTask | No peers available, waiting for peers: 0
+    >   ....
+
+
+    No sync target, waiting for peers #583
+    https://github.com/hyperledger/besu/issues/583
+
+    Needs both TCP and UDP connectivity.
+
+    DigitalOcean LoadBalancers only support TCP.
+
+    Idea is 'under review' ...
+    https://ideas.digitalocean.com/network/p/add-support-for-udp-protocol-to-the-load-balancers
+
+    but this is basically a show stopper for now
+
+
+    We could try installing our own Kubernetes !?
+    https://typhoon.psdn.io/
+
+    Probably more pragnmatic to go back and try running the docker-compose setup on a DigitalOcean VM.
+
+
+
+

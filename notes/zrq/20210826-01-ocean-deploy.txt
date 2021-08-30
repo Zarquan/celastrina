@@ -1,0 +1,602 @@
+#
+# <meta:header>
+#   <meta:licence>
+#     Copyright (C) 2021 by Wizzard Solutions Ltd, ischnura@metagrid.co.uk
+#
+#     This information is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This information is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#   </meta:licence>
+# </meta:header>
+#
+#
+
+    Target:
+
+        Deploy the testnet validator in K8s on DigitalOcean.
+        Learn about creating K8s deployments.
+        Learn about K8s deployments on DigitalOcean.
+
+    Result:
+
+        Work in progress ..
+        Learning about K8s on DigitalOcean.
+
+
+# -----------------------------------------------------
+# Create a client container to work in.
+#[user@desktop]
+
+    podman run \
+        --rm \
+        --tty \
+        --interactive \
+        --hostname oceanic \
+        --env "DIGITALOCEAN_ACCESS_TOKEN=$(secret 'digital.ocean.token')" \
+        --env "SSH_AUTH_SOCK=/mnt/ssh_auth_sock" \
+        --volume "${SSH_AUTH_SOCK}:/mnt/ssh_auth_sock:rw,z" \
+        atolmis/digitalocean-client:2021.08.25
+
+
+# -----------------------------------------------------
+# Get our account details.
+#[user@desktop]
+
+    doctl account get
+
+    >   Email               Droplet Limit    Email Verified    UUID        Status
+    >   user@example.com    25               true              43....63    active
+
+
+    doctl \
+        --output json\
+        account get \
+    | jq '.'
+
+    >   {
+    >     "droplet_limit": 25,
+    >     "floating_ip_limit": 3,
+    >     "volume_limit": 100,
+    >     "email": "user@example.com",
+    >     "uuid": "43....63",
+    >     "email_verified": true,
+    >     "status": "active"
+    >   }
+
+
+# -----------------------------------------------------
+# List our droplets.
+#[user@desktop]
+
+    doctl compute droplet list
+
+    >   ID           Name        Public IPv4      Private IPv4    Public IPv6                 Memory    VCPUs    Disk    Region    Image            VPC UUID                                Status    Tags    Features                   Volumes
+    >   231004055    Hizzoria    46.101.32.198    10.106.0.2      2a03:b0c0:1:d0::b53:6001    1024      1        25      lon1      Fedora 33 x64    c873dfe8-9619-4801-9c18-f3fdc290b0fd    active            private_networking,ipv6
+
+
+    doctl \
+        --output json \
+        compute \
+            droplet list \
+    | jq '.'
+
+
+    >   [
+    >     {
+    >       "id": 231004055,
+    >       "name": "Hizzoria",
+    >       "memory": 1024,
+    >       "vcpus": 1,
+    >       "disk": 25,
+    >       "region": {
+    >         "slug": "lon1",
+    >         "name": "London 1",
+    >         "sizes": [
+    >           "s-1vcpu-1gb",
+    >           "s-1vcpu-1gb-amd",
+    >           ....
+    >           ....
+    >           "m6-32vcpu-256gb",
+    >           "so1_5-32vcpu-256gb"
+    >         ],
+    >         "available": true,
+    >         "features": [
+    >           "backups",
+    >           "ipv6",
+    >           "metadata",
+    >           "install_agent",
+    >           "storage",
+    >           "image_transfer"
+    >         ]
+    >       },
+    >       "image": {
+    >         "id": 72465092,
+    >         "name": "33 x64",
+    >         "type": "base",
+    >         "distribution": "Fedora",
+    >         "min_disk_size": 15,
+    >         "size_gigabytes": 0.25,
+    >         "created_at": "2020-10-27T21:32:48Z",
+    >         "description": "Fedora 33 x64",
+    >         "status": "retired"
+    >       },
+    >       "size": {
+    >         "slug": "s-1vcpu-1gb",
+    >         "memory": 1024,
+    >         "vcpus": 1,
+    >         "disk": 25,
+    >         "price_monthly": 5,
+    >         "price_hourly": 0.00744,
+    >         "regions": [
+    >           "ams2",
+    >           "ams3",
+    >           ....
+    >           ....
+    >           "sgp1",
+    >           "tor1"
+    >         ],
+    >         "available": true,
+    >         "transfer": 1,
+    >         "description": "Basic"
+    >       },
+    >       "size_slug": "s-1vcpu-1gb",
+    >       "features": [
+    >         "private_networking",
+    >         "ipv6"
+    >       ],
+    >       "status": "active",
+    >       "networks": {
+    >         "v4": [
+    >           {
+    >             "ip_address": "10.106.0.2",
+    >             "netmask": "255.255.240.0",
+    >             "type": "private"
+    >           },
+    >           {
+    >             "ip_address": "46.101.32.198",
+    >             "netmask": "255.255.192.0",
+    >             "gateway": "46.101.0.1",
+    >             "type": "public"
+    >           }
+    >         ],
+    >         "v6": [
+    >           {
+    >             "ip_address": "2a03:b0c0:1:d0::b53:6001",
+    >             "netmask": 64,
+    >             "gateway": "2a03:b0c0:1:d0::1",
+    >             "type": "public"
+    >           }
+    >         ]
+    >       },
+    >       "created_at": "2021-02-10T13:18:03Z",
+    >       "volume_ids": [],
+    >       "vpc_uuid": "c873dfe8-9619-4801-9c18-f3fdc290b0fd"
+    >     }
+    >   ]
+
+    #
+    # Duplicated data ..
+    # Droplet info includes the region, region info lists the sizes available in that region.
+    # Droplet info includes the size, size info lists the regions that size is available in.
+    # Droplet info includes the size, 'size info includes the size 'slug'.
+    # Droplet info also includes the 'size_slug' as a separate property.
+    # All we actually need are the size and region identifiers.
+    #
+
+# -----------------------------------------------------
+# List our projects.
+#[user@desktop]
+
+    doctl projects list
+
+    >   ID          Owner UUID  Owner ID    Name                      Description                                       Purpose                         Environment    Is Default?    Created At              Updated At
+    >   18....10    43....63    836540      cloud.digitalocean.com    Update your project information under Settings                                                   true           2018-04-17T16:12:33Z    2018-07-25T18:20:44Z
+    >   4a....63    43....63    836540      etherium-testnet                                                            Just trying out DigitalOcean                   false          2021-08-24T11:58:18Z    2021-08-24T11:58:18Z
+
+
+    doctl \
+        --output json \
+        projects list \
+    | jq '.'
+
+    >   [
+    >     {
+    >       "id": "18d47e80-aa19-4af3-98a2-248a62948010",
+    >       "owner_uuid": "43578d4f747e5baa65d87149bce4f61292523b63",
+    >       "owner_id": 836540,
+    >       "name": "cloud.digitalocean.com",
+    >       "description": "Update your project information under Settings",
+    >       "purpose": "",
+    >       "environment": "",
+    >       "is_default": true,
+    >       "created_at": "2018-04-17T16:12:33Z",
+    >       "updated_at": "2018-07-25T18:20:44Z"
+    >     },
+    >     {
+    >       "id": "4a605e43-2b30-48a4-9409-4c8962c03f63",
+    >       "owner_uuid": "43578d4f747e5baa65d87149bce4f61292523b63",
+    >       "owner_id": 836540,
+    >       "name": "etherium-testnet",
+    >       "description": "",
+    >       "purpose": "Just trying out DigitalOcean",
+    >       "environment": "",
+    >       "is_default": false,
+    >       "created_at": "2021-08-24T11:58:18Z",
+    >       "updated_at": "2021-08-24T11:58:18Z"
+    >     }
+    >   ]
+
+
+    doctl \
+        --output json \
+        projects list \
+    | jq '.[] | select( .name | test("^etherium.*"))'
+
+    >   {
+    >     "id": "4a605e43-2b30-48a4-9409-4c8962c03f63",
+    >     "owner_uuid": "43578d4f747e5baa65d87149bce4f61292523b63",
+    >     "owner_id": 836540,
+    >     "name": "etherium-testnet",
+    >     "description": "",
+    >     "purpose": "Just trying out DigitalOcean",
+    >     "environment": "",
+    >     "is_default": false,
+    >     "created_at": "2021-08-24T11:58:18Z",
+    >     "updated_at": "2021-08-24T11:58:18Z"
+    >   }
+
+
+# -----------------------------------------------------
+# Delete our 'etherium' project (bad spelling).
+#[user@desktop]
+
+
+    doctl \
+        --output json \
+        projects list \
+    | jq -r '.[] | select( .name | test("^etherium.*")) | .id'
+
+    >   4a605e43-2b30-48a4-9409-4c8962c03f63
+
+
+    projectid=$(
+        doctl \
+            --output json \
+            projects list \
+        | jq -r '.[] | select( .name | test("^etherium.*")) | .id'
+        )
+
+    doctl \
+        projects delete \
+            "${projectid:?}"
+
+    >   Warning: Are you sure you want to delete this project? (y/N) ? y
+
+
+# -----------------------------------------------------
+# Create our 'ethereum' project (fixed spelling).
+#[user@desktop]
+
+    doctl \
+        --output json \
+        projects create \
+            --name 'ethereum-project' \
+            --purpose 'Ethereum testnet validator' \
+            --description 'Ethereum testnet validator' \
+    | jq '.'
+
+    >   [
+    >     {
+    >       "id": "858cf5c5-9a61-40a0-a78a-f04a2c305732",
+    >       "owner_uuid": "43578d4f747e5baa65d87149bce4f61292523b63",
+    >       "owner_id": 836540,
+    >       "name": "ethereum-project",
+    >       "description": "Ethereum testnet validator",
+    >       "purpose": "Other: Ethereum testnet validator",
+    >       "environment": "",
+    >       "is_default": false,
+    >       "created_at": "2021-08-26T16:53:31Z",
+    >       "updated_at": "2021-08-26T16:53:31Z"
+    >     }
+    >   ]
+
+    projectid=$(
+        doctl \
+            --output json \
+            projects list \
+        | jq -r '.[] | select( .name | test("^ethereum.*")) | .id'
+        )
+
+echo "Project [${projectid}]"
+
+    >   Project [858cf5c5-9a61-40a0-a78a-f04a2c305732]
+
+
+    doctl \
+        --output json \
+        projects update \
+            --name 'ethereum-testnet-project' \
+            "${projectid:?}" \
+    | jq '.'
+
+    >   [
+    >     {
+    >       "id": "858cf5c5-9a61-40a0-a78a-f04a2c305732",
+    >       "owner_uuid": "43578d4f747e5baa65d87149bce4f61292523b63",
+    >       "owner_id": 836540,
+    >       "name": "ethereum-testnet-project",
+    >       "description": "Ethereum testnet validator",
+    >       "purpose": "Other: Ethereum testnet validator",
+    >       "environment": "",
+    >       "is_default": false,
+    >       "created_at": "2021-08-26T16:53:31Z",
+    >       "updated_at": "2021-08-26T16:53:31Z"
+    >     }
+    >   ]
+
+
+# -----------------------------------------------------
+# List the regions that support K8s clusters.
+#[user@desktop]
+
+    doctl \
+        kubernetes \
+            options regions
+
+    >   Slug    Name
+    >   nyc1    New York 1
+    >   sgp1    Singapore 1
+    >   lon1    London 1
+    >   nyc3    New York 3
+    >   ams3    Amsterdam 3
+    >   fra1    Frankfurt 1
+    >   tor1    Toronto 1
+    >   blr1    Bangalore 1
+    >   sfo3    San Francisco 3
+
+
+    doctl \
+        --output json \
+        kubernetes \
+            options regions \
+    | jq '.'
+
+    >   [
+    >     {
+    >       "name": "New York 1",
+    >       "slug": "nyc1"
+    >     },
+    >     ....
+    >     ....
+    >     {
+    >       "name": "San Francisco 3",
+    >       "slug": "sfo3"
+    >     }
+    >   ]
+
+
+# -----------------------------------------------------
+# List the vm sizes available to K8s clusters.
+#[user@desktop]
+
+    doctl \
+        kubernetes \
+            options sizes
+
+    >   Slug                  Name
+    >   s-1vcpu-2gb           s-1vcpu-2gb
+    >   s-1vcpu-2gb-amd       s-1vcpu-2gb-amd
+    >   s-1vcpu-2gb-intel     s-1vcpu-2gb-intel
+    >   s-2vcpu-2gb           s-2vcpu-2gb
+    >   s-2vcpu-2gb-amd       s-2vcpu-2gb-amd
+    >   s-2vcpu-2gb-intel     s-2vcpu-2gb-intel
+    >   ....
+    >   ....
+
+
+    doctl \
+        --output json \
+        kubernetes \
+            options sizes \
+    | jq '.'
+
+
+    >   [
+    >     {
+    >       "name": "New York 1",
+    >       "slug": "nyc1"
+    >     },
+    >   ....
+    >   ....
+    >     {
+    >       "name": "so1_5-32vcpu-256gb",
+    >       "slug": "so1_5-32vcpu-256gb"
+    >     }
+    >   ]
+
+
+# -----------------------------------------------------
+# Create a new K8s cluster.
+#[user@desktop]
+
+    dovmcount=2
+    doregion=ams3
+    dovmsize=s-1vcpu-2gb
+
+    doctl \
+        --output json \
+        kubernetes \
+            cluster \
+                create \
+                    'etherium-testnet-cluster' \
+                    --size    ${dovmsize:?} \
+                    --count   ${dovmcount:?} \
+                    --region  ${doregion:?} \
+    | tee /tmp/cluster.json \
+    | jq '.'
+
+
+    >   Notice: Cluster is provisioning, waiting for cluster to be running
+    >   .........................................................................
+    >   Notice: Cluster created, fetching credentials
+    >   Notice: Adding cluster credentials to kubeconfig file found in "/root/.kube/config"
+    >   Notice: Setting current-context to do-ams3-etherium-testnet-cluster
+
+    >   [
+    >     {
+    >       "id": "460dead9-dbf8-42d7-b499-70bd0ed396d8",
+    >       "name": "etherium-testnet-cluster",
+    >       "region": "ams3",
+    >       "version": "1.21.2-do.2",
+    >       "cluster_subnet": "10.244.0.0/16",
+    >       "service_subnet": "10.245.0.0/16",
+    >       "ipv4": "134.209.94.43",
+    >       "endpoint": "https://460dead9-dbf8-42d7-b499-70bd0ed396d8.k8s.ondigitalocean.com",
+    >       "tags": [
+    >         "k8s",
+    >         "k8s:460dead9-dbf8-42d7-b499-70bd0ed396d8"
+    >       ],
+    >       "vpc_uuid": "6e933088-8eb3-4caf-8764-02cbfe92369c",
+    >       "node_pools": [
+    >         {
+    >           "id": "28dc9ffe-cda9-4806-8dad-a822ef2015af",
+    >           "name": "etherium-testnet-cluster-default-pool",
+    >           "size": "s-1vcpu-2gb",
+    >           "count": 2,
+    >           "tags": [
+    >             "k8s",
+    >             "k8s:460dead9-dbf8-42d7-b499-70bd0ed396d8",
+    >             "k8s:worker"
+    >           ],
+    >           "nodes": [
+    >             {
+    >               "id": "39f297c9-1bad-4eb8-a390-fa3b1ccd51c3",
+    >               "name": "etherium-testnet-cluster-default-pool-8durg",
+    >               "status": {
+    >                 "state": "running"
+    >               },
+    >               "droplet_id": "261956752",
+    >               "created_at": "2021-08-26T17:47:36Z",
+    >               "updated_at": "2021-08-26T17:51:31Z"
+    >             },
+    >             {
+    >               "id": "5c328004-c543-48b0-97fa-2ae93407af64",
+    >               "name": "etherium-testnet-cluster-default-pool-8dure",
+    >               "status": {
+    >                 "state": "running"
+    >               },
+    >               "droplet_id": "261956753",
+    >               "created_at": "2021-08-26T17:47:36Z",
+    >               "updated_at": "2021-08-26T17:51:31Z"
+    >             }
+    >           ]
+    >         }
+    >       ],
+    >       "maintenance_policy": {
+    >         "start_time": "00:00",
+    >         "duration": "4h0m0s",
+    >         "day": "any"
+    >       },
+    >       "surge_upgrade": true,
+    >       "status": {
+    >         "state": "running"
+    >       },
+    >       "created_at": "2021-08-26T17:47:36Z",
+    >       "updated_at": "2021-08-26T17:54:14Z"
+    >     }
+    >   ]
+
+
+# -----------------------------------------------------
+# Test our kubectl access.
+#[user@desktop]
+
+    kubectl \
+        cluster-info
+
+    >   Kubernetes control plane is running at https://460dead9-dbf8-42d7-b499-70bd0ed396d8.k8s.ondigitalocean.com
+    >   CoreDNS is running at https://460dead9-dbf8-42d7-b499-70bd0ed396d8.k8s.ondigitalocean.com/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+
+
+    kubectl \
+        version
+
+    >   Client Version: version.Info{Major:"1", Minor:"20", GitVersion:"v1.20.5", GitCommit:"6b1d87acf3c8253c123756b9e61dac642678305f", GitTreeState:"archive", BuildDate:"2021-03-30T00:00:00Z", GoVersion:"go1.16", Compiler:"gc", Platform:"linux/amd64"}
+    >   Server Version: version.Info{Major:"1", Minor:"21", GitVersion:"v1.21.2", GitCommit:"092fbfbf53427de67cac1e9fa54aaa09a28371d7", GitTreeState:"clean", BuildDate:"2021-06-16T12:53:14Z", GoVersion:"go1.16.5", Compiler:"gc", Platform:"linux/amd64"}
+
+
+    kubectl \
+        --output json \
+        version
+
+    >   {
+    >     "clientVersion": {
+    >       "major": "1",
+    >       "minor": "20",
+    >       "gitVersion": "v1.20.5",
+    >       "gitCommit": "6b1d87acf3c8253c123756b9e61dac642678305f",
+    >       "gitTreeState": "archive",
+    >       "buildDate": "2021-03-30T00:00:00Z",
+    >       "goVersion": "go1.16",
+    >       "compiler": "gc",
+    >       "platform": "linux/amd64"
+    >     },
+    >     "serverVersion": {
+    >       "major": "1",
+    >       "minor": "21",
+    >       "gitVersion": "v1.21.2",
+    >       "gitCommit": "092fbfbf53427de67cac1e9fa54aaa09a28371d7",
+    >       "gitTreeState": "clean",
+    >       "buildDate": "2021-06-16T12:53:14Z",
+    >       "goVersion": "go1.16.5",
+    >       "compiler": "gc",
+    >       "platform": "linux/amd64"
+    >     }
+    >   }
+
+
+    kubectl \
+        get Namespaces
+
+    >   NAME              STATUS   AGE
+    >   default           Active   15m
+    >   kube-node-lease   Active   15m
+    >   kube-public       Active   15m
+    >   kube-system       Active   15m
+
+
+    kubectl \
+        get Pods
+
+    >   No resources found in default namespace.
+
+
+    kubectl \
+        --namespace 'kube-system' \
+        get Pods
+
+    >   NAME                               READY   STATUS    RESTARTS   AGE
+    >   cilium-bqg59                       1/1     Running   0          13m
+    >   cilium-operator-57d77c686b-rnm5l   1/1     Running   1          16m
+    >   cilium-operator-57d77c686b-xhd4l   1/1     Running   0          16m
+    >   cilium-pdzfq                       1/1     Running   0          13m
+    >   coredns-85d9ccbb46-26vjl           1/1     Running   0          16m
+    >   coredns-85d9ccbb46-lwlg5           1/1     Running   0          16m
+    >   csi-do-node-jrbh4                  2/2     Running   0          13m
+    >   csi-do-node-n4cv4                  2/2     Running   0          13m
+    >   do-node-agent-6kggc                1/1     Running   0          13m
+    >   do-node-agent-n4fwg                1/1     Running   0          13m
+    >   kube-proxy-2krrz                   1/1     Running   0          13m
+    >   kube-proxy-pdgt4                   1/1     Running   0          13m
+
+
+

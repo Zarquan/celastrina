@@ -1,0 +1,259 @@
+#
+# <meta:header>
+#   <meta:licence>
+#     Copyright (C) 2021 by Wizzard Solutions Ltd, ischnura@metagrid.co.uk
+#
+#     This information is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This information is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#   </meta:licence>
+# </meta:header>
+#
+#
+
+    Target:
+
+        Deploy a testnet validator locally.
+        Learn how to migrate away from Blox.
+        Learn how to run K8s locally
+
+    Result
+
+        Stalled - the easy part turned out hard.
+        Unable to get Minikube to run on desktop (issues with btrfs).
+
+
+# -----------------------------------------------------
+# Install MiniKube
+# https://minikube.sigs.k8s.io/docs/start/
+#[user@desktop]
+
+    pushd $(mktemp -d)
+
+        curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-latest.x86_64.rpm
+        sudo dnf install minikube-latest.x86_64.rpm
+
+    popd
+
+    >   ....
+    >   ....
+    >   Installed:
+    >     minikube-1.22.0-0.x86_64
+
+
+# -----------------------------------------------------
+# Start MiniKube using the Podman driver
+# https://minikube.sigs.k8s.io/docs/start/
+# https://minikube.sigs.k8s.io/docs/drivers/podman/
+#[user@desktop]
+
+    minikube config set driver podman
+    minikube config set container-runtime cri-o
+
+    >   ❗  These changes will take effect upon a minikube delete and then a minikube start
+
+
+    minikube start
+
+    >   😄  minikube v1.22.0 on Fedora 32
+    >   ✨  Using the podman driver based on user configuration
+    >   
+    >   💣  Exiting due to PROVIDER_PODMAN_NOT_RUNNING: "sudo -k -n podman version --format " exit status 1: sudo: a password is required
+    >   💡  Suggestion: Add your user to the 'sudoers' file: 'Zarquan ALL=(ALL) NOPASSWD: /usr/bin/podman'
+    >   📘  Documentation: https://podman.io
+
+
+# -----------------------------------------------------
+# Allow no-password sudo to run Podman.
+# https://minikube.sigs.k8s.io/docs/drivers/podman/#known-issues
+#[user@desktop]
+
+    sudo visudo
+
+    >   ....
+    >   ....
+    >   # Allow no-password sudo to run Podman
+    >   # https://minikube.sigs.k8s.io/docs/drivers/podman/#known-issues
+    >   Zarquan ALL=(ALL) NOPASSWD: /usr/bin/podman
+
+
+# -----------------------------------------------------
+# Start MiniKube using the Podman driver
+#[user@desktop]
+
+    minikube start
+
+    >   😄  minikube v1.22.0 on Fedora 32
+    >   ✨  Using the podman driver based on user configuration
+    >   👍  Starting control plane node minikube in cluster minikube
+    >   🚜  Pulling base image ...
+    >   💾  Downloading Kubernetes v1.21.2 preload ...
+    >   ....
+    >   ....
+    >   	[WARNING Swap]: running with swap on is not supported. Please disable swap
+    >   	[WARNING Service-Kubelet]: kubelet service is not enabled, please run 'systemctl enable kubelet.service'
+    >   error execution phase wait-control-plane: couldn't initialize a Kubernetes cluster
+    >   To see the stack trace of this error execute with --v=5 or higher
+    >   ....
+    >   ❌  Problems detected in kubelet:
+    >       Aug 23 03:51:47 minikube kubelet[2539]: E0823 03:51:47.858349    2539 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+    >       Aug 23 03:51:54 minikube kubelet[2589]: E0823 03:51:54.254011    2589 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+    >       Aug 23 03:52:00 minikube kubelet[2659]: E0823 03:52:00.861596    2659 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+    >   
+    >   ❌  Exiting due to K8S_KUBELET_NOT_RUNNING: wait: /bin/bash -c "sudo env PATH=/var/lib/minikube/binaries/v1.21.2:$PATH kubeadm init --config /var/tmp/minikube/kubeadm.yaml  --ignore-preflight-errors=DirAvailable--etc-kubernetes-manifests,DirAvailable--var-lib-minikube,DirAvailable--var-lib-minikube-etcd,FileAvailable--etc-kubernetes-manifests-kube-scheduler.yaml,FileAvailable--etc-kubernetes-manifests-kube-apiserver.yaml,FileAvailable--etc-kubernetes-manifests-kube-controller-manager.yaml,FileAvailable--etc-kubernetes-manifests-etcd.yaml,Port-10250,Swap,Mem,SystemVerification,FileContent--proc-sys-net-bridge-bridge-nf-call-iptables": Process exited with status 1
+    >   stdout:
+    >   ....
+    >   ....
+    >   💡  Suggestion: Check output of 'journalctl -xeu kubelet', try passing --extra-config=kubelet.cgroup-driver=systemd to minikube start
+    >   🍿  Related issue: https://github.com/kubernetes/minikube/issues/4172
+
+
+# -----------------------------------------------------
+# Enable the kubelet service
+#[user@desktop]
+
+    sudo systemctl enable kubelet.service
+
+    >   Failed to enable unit: Unit file kubelet.service does not exist.
+
+    # OK - come back to that later.
+
+
+# -----------------------------------------------------
+# Add 'fix' for btrfs mount.
+# https://github.com/kubernetes/kubernetes/issues/65204
+# https://github.com/kubernetes/kubernetes/issues/94335
+#[user@desktop]
+
+    sudo vi /etc/fstab
+
+    +   /var/lib/kubelet /var/lib/kubelet none defaults,bind,nofail 0 0
+
+
+    sudo mkdir /var/lib/kubelet
+    sudo mount /var/lib/kubelet
+
+
+# -----------------------------------------------------
+# Start MiniKube using the Podman driver
+#[user@desktop]
+
+    minikube start
+
+    >   ....
+    >   ❌  Problems detected in kubelet:
+    >       Aug 23 04:47:17 minikube kubelet[36890]: E0823 04:47:17.963763   36890 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+    >       Aug 23 04:47:24 minikube kubelet[37082]: E0823 04:47:24.211314   37082 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+    >       Aug 23 04:47:30 minikube kubelet[37147]: E0823 04:47:30.454562   37147 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+    >       Aug 23 04:47:36 minikube kubelet[37342]: E0823 04:47:36.743545   37342 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+    >       Aug 23 04:47:43 minikube kubelet[37487]: E0823 04:47:43.225519   37487 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+    >   ....
+
+
+# -----------------------------------------------------
+# -----------------------------------------------------
+# Reboot the system ...
+#[user@desktop]
+
+
+    sudo reboot
+
+# -----------------------------------------------------
+# -----------------------------------------------------
+# Start MiniKube using the Podman driver
+#[user@desktop]
+
+    minikube start
+
+
+    >   ....
+    >       Aug 23 04:56:41 minikube kubelet[1641]: E0823 04:56:41.453773    1641 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+    >       Aug 23 04:56:47 minikube kubelet[1723]: E0823 04:56:47.686861    1723 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+    >   ....
+
+
+    df -h /var/lib/kubelet
+
+    >   Filesystem                                             Size  Used Avail Use% Mounted on
+    >   /dev/mapper/luks-312f2ac3-1c55-4767-99c0-23566bcc24df  450G  394G   56G  88% /var/lib/kubelet
+
+
+# -----------------------------------------------------
+# Run Minikube with Docker rather than Podman
+#[user@desktop]
+
+    minikube delete
+
+    minikube config set driver docker
+    minikube config set container-runtime docker
+
+    minikube start
+
+    >   😄  minikube v1.22.0 on Fedora 32
+    >   ✨  Using the docker driver based on user configuration
+    >   ❗  docker is currently using the btrfs storage driver, consider switching to overlay2 for better performance
+    >   👍  Starting control plane node minikube in cluster minikube
+    >   🚜  Pulling base image ...
+    >   🔥  Creating docker container (CPUs=2, Memory=3800MB) ...
+    >       > kubectl.sha256: 64 B / 64 B [--------------------------] 100.00% ? p/s 0s
+    >       > kubelet.sha256: 64 B / 64 B [--------------------------] 100.00% ? p/s 0s
+    >       > kubeadm.sha256: 64 B / 64 B [--------------------------] 100.00% ? p/s 0s
+    >       > kubeadm: 42.57 MiB / 42.57 MiB [-----------] 100.00% 527.30 KiB p/s 1m23s
+    >       > kubectl: 44.27 MiB / 44.27 MiB [-----------] 100.00% 535.46 KiB p/s 1m25s
+    >       > kubelet: 112.68 MiB / 112.68 MiB [----------] 100.00% 903.27 KiB p/s 2m8s
+    >   
+    >       ▪ Generating certificates and keys ...
+    >       ▪ Booting up control plane ...-
+    >   ....
+    >   ....
+    >   	[WARNING Swap]: running with swap on is not supported. Please disable swap
+    >   	[WARNING SystemVerification]: unsupported graph driver: btrfs
+    >   	[WARNING Service-Kubelet]: kubelet service is not enabled, please run 'systemctl enable kubelet.service'
+    >   error execution phase wait-control-plane: couldn't initialize a Kubernetes cluster
+    >   To see the stack trace of this error execute with --v=5 or higher
+    >   ....
+    >   ....
+    >   ❌  Problems detected in kubelet:
+    >       Aug 23 14:18:29 minikube kubelet[49560]: E0823 14:18:29.906648   49560 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+    >       Aug 23 14:18:31 minikube kubelet[49787]: E0823 14:18:31.419099   49787 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+    >       Aug 23 14:18:32 minikube kubelet[50019]: E0823 14:18:32.952680   50019 kubelet.go:1384] "Failed to start ContainerManager" err="failed to get rootfs info: failed to get device for dir \"/var/lib/kubelet\": could not find device with major: 0, minor: 33 in cached partitions map"
+
+
+# -----------------------------------------------------
+# Turn off the dam emojis ..
+# https://minikube.sigs.k8s.io/docs/faq/#can-i-get-rid-of-the-emoji-in-minikubes-outpuut
+# https://github.com/kubernetes/minikube/issues/5024
+#[user@desktop]
+
+    MINIKUBE_IN_STYLE=0 minikube start
+
+
+    Minikube doesn't support IPv6 !!
+    https://minikube.sigs.k8s.io/docs/faq/#does-minikube-support-ipv6
+    https://github.com/kubernetes/minikube/issues/8535
+    https://minikube.sigs.k8s.io/docs/contrib/roadmap/
+
+        I think this will kill it off.
+        The hassle of trying to add a public IPv4 address on top of everything else ...
+        Easier deploy on DigitalOcean.
+
+    Minikube can't handle a btrfs filesystem.
+	[WARNING SystemVerification]: unsupported graph driver: btrfs
+
+        This was supposed to be the easy part :-(
+
+
+
+
+
+
+
